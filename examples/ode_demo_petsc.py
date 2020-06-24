@@ -46,11 +46,11 @@ class Lambda(nn.Module):
     def forward(self, t, y):
         return torch.mm(y**3, true_A)
 
-ode = petsc_adjoint.ODEPetsc(true_y0)
-ode.setupTS(Lambda())
+ode0 = petsc_adjoint.ODEPetsc()
+ode0.setupTS(true_y0, Lambda(), 0.05)
 
 with torch.no_grad():
-    true_y = ode.odeint(true_y0, t)
+    true_y = ode0.odeint(true_y0, t)
 
 print(true_y)
 
@@ -160,15 +160,16 @@ class RunningAverageMeter(object):
 if __name__ == '__main__':
 
     ii = 0
-
+    batch_y0,_,_ = get_batch()
     func = ODEFunc()
-    ode.setupTS(func)
     optimizer = optim.RMSprop(func.parameters(), lr=1e-3)
     end = time.time()
 
     time_meter = RunningAverageMeter(0.97)
     loss_meter = RunningAverageMeter(0.97)
 
+    ode = petsc_adjoint.ODEPetsc()
+    ode.setupTS(batch_y0, func, 0.05)
     for itr in range(1, niters + 1):
         optimizer.zero_grad()
         batch_y0, batch_t, batch_y = get_batch()
@@ -182,7 +183,8 @@ if __name__ == '__main__':
 
         if itr % test_freq == 0:
             with torch.no_grad():
-                pred_y = ode.odeint_adjoint(true_y0, t)
+                ode0.setupTS(true_y0, func, 0.05)
+                pred_y = ode0.odeint_adjoint(true_y0, t)
                 loss = torch.mean(torch.abs(pred_y - true_y))
                 print('Iter {:04d} | Total Loss {:.6f}'.format(itr, loss.item()))
                 visualize(true_y, pred_y, func, ii)

@@ -22,7 +22,7 @@ class JacShell:
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
-        y[:] = vjp_u[0].numpy()
+        y[:] = vjp_u[0].numpy().flatten()
 
 class JacPShell:
     def __init__(self, ode):
@@ -41,15 +41,12 @@ class JacPShell:
             )
         # autograd.grad returns None if no gradient, set to zero.
         vjp_params = _flatten_convert_none_to_zeros(vjp_params, f_params)
-        y[:] = vjp_params.numpy()
+        y[:] = vjp_params.numpy().flatten()
 
 class ODEPetsc(object):
     comm = PETSc.COMM_SELF
 
-    def __init__(self, u_tensor):
-        self.u_tensor = u_tensor
-        self.n = u_tensor.shape[-1]
-        self.U = PETSc.Vec().createWithArray(self.u_tensor.numpy()) # convert to PETSc vec
+    def __init__(self):
         self.ts = PETSc.TS().create(comm=self.comm)
 
     def evalFunction(self, ts, t, U, F):
@@ -68,11 +65,17 @@ class ODEPetsc(object):
         self.t = t
         self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
-    def setupTS(self, func):
+    def setupTS(self, u_tensor, func, step_size=0.01):
+        self.u_tensor = u_tensor
+        self.n = u_tensor.numel()
+        self.U = PETSc.Vec().createWithArray(self.u_tensor.numpy()) # convert to PETSc vec
+
         self.func = func
+        self.step_size = step_size
         self.flat_params = _flatten(func.parameters())
         self.np = self.flat_params.numel()
 
+        self.ts.reset()
         self.ts.setType(PETSc.TS.Type.RK)
         self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
 
@@ -103,34 +106,34 @@ class ODEPetsc(object):
         # self.adj_p.append(torch.zeros_like(self.flat_params))
         self.ts.setCostGradients(self.adj_u, self.adj_p)
         self.ts.setSaveTrajectory()
+        # self.ts.setMaxSteps(1000)
         self.ts.setFromOptions()
+        self.ts.setTimeStep(step_size) # overwrite the command-line option
 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
         # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
-        for u0_ in u0:
-            U = self.U
-            U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
-            ts = self.ts
-            solution = [u0]
-            t = t.to(u0[0].device, torch.float64)
-            ts.setTime(t[0])
-            ts.setStepNumber(0)
-            for i in range(1, len(t)):
-                ts.setMaxTime(t[i])
-                ts.setTimeStep(0.05)
-                ts.setFromOptions()
-                ts.solve(U)
-                unew = torch.from_numpy(U.getArray().reshape(u0.size())).type(torch.FloatTensor)
-                solution.append(unew)
-            solution = torch.stack([solution[i] for i in range(len(t))], dim=0)
+        U = self.U
+        U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
+        ts = self.ts
+        solution = [u0]
+        t = t.to(u0[0].device, torch.float64)
+        ts.setTime(t[0])
+        ts.setStepNumber(0)
+        for i in range(1, len(t)):
+            ts.setMaxTime(t[i])
+            ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
+            ts.solve(U)
+            unew = torch.from_numpy(U.getArray().reshape(u0.size())).type(torch.FloatTensor)
+            solution.append(unew)
+        solution = torch.stack([solution[i] for i in range(len(t))], dim=0)
         return solution
 
     def petsc_adjointsolve(self, t):
         t = t.to(self.u_tensor.device, torch.float64)
         ts = self.ts
         dt = ts.getTimeStep()
-        print('do {} adjoint steps'.format(round(((t[1]-t[0])/dt).abs().item())))
+        # print('do {} adjoint steps'.format(round(((t[1]-t[0])/dt).abs().item())))
         ts.adjointSetSteps(round(((t[1]-t[0])/dt).abs().item()))
         ts.adjointSolve()
         adj_u, adj_p = ts.getCostGradients()
