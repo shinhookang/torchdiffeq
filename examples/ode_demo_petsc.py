@@ -11,9 +11,9 @@ import sys
 
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5', 'adams'], default='dopri5')
-parser.add_argument('--data_size', type=int, default=101)
-parser.add_argument('--batch_time', type=int, default=20)
-parser.add_argument('--batch_size', type=int, default=1)
+parser.add_argument('--data_size', type=int, default=1001)
+parser.add_argument('--batch_time', type=int, default=10)
+parser.add_argument('--batch_size', type=int, default=20)
 parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--test_freq', type=int, default=20)
 parser.add_argument('--viz', action='store_true')
@@ -47,7 +47,7 @@ class Lambda(nn.Module):
         return torch.mm(y**3, true_A)
 
 ode0 = petsc_adjoint.ODEPetsc()
-ode0.setupTS(true_y0, Lambda(), 0.05)
+ode0.setupTS(true_y0, Lambda(), step_size=0.05, enable_adjoint=False)
 
 with torch.no_grad():
     true_y = ode0.odeint(true_y0, t)
@@ -183,7 +183,7 @@ if __name__ == '__main__':
 
         if itr % test_freq == 0:
             with torch.no_grad():
-                ode0.setupTS(true_y0, func, 0.05)
+                ode0.setupTS(true_y0, func, step_size=0.05, enable_adjoint=False)
                 pred_y = ode0.odeint_adjoint(true_y0, t)
                 loss = torch.mean(torch.abs(pred_y - true_y))
                 print('Iter {:04d} | Total Loss {:.6f}'.format(itr, loss.item()))

@@ -65,7 +65,7 @@ class ODEPetsc(object):
         self.t = t
         self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
-    def setupTS(self, u_tensor, func, step_size=0.01):
+    def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True):
         self.u_tensor = u_tensor
         self.n = u_tensor.numel()
         self.U = PETSc.Vec().createWithArray(self.u_tensor.numpy()) # convert to PETSc vec
@@ -89,23 +89,26 @@ class ODEPetsc(object):
         Jac.setPythonContext(shell)
         Jac.setUp()
         Jac.assemble()
-        Jacp = PETSc.Mat().create()
-        Jacp.setSizes([self.n, self.np])
-        Jacp.setType('python')
-        shell = JacPShell(self)
-        Jacp.setPythonContext(shell)
-        Jacp.setUp()
-        Jacp.assemble()
         self.ts.setRHSJacobian(self.evalJacobian, Jac)
-        self.ts.setRHSJacobianP(self.evalJacobianP, Jacp)
 
-        self.adj_u = []
-        self.adj_u.append(PETSc.Vec().createSeq(self.n, comm=self.comm))
-        self.adj_p = []
-        self.adj_p.append(PETSc.Vec().createSeq(self.np, comm=self.comm))
-        # self.adj_p.append(torch.zeros_like(self.flat_params))
-        self.ts.setCostGradients(self.adj_u, self.adj_p)
-        self.ts.setSaveTrajectory()
+        if enable_adjoint :
+            Jacp = PETSc.Mat().create()
+            Jacp.setSizes([self.n, self.np])
+            Jacp.setType('python')
+            shell = JacPShell(self)
+            Jacp.setPythonContext(shell)
+            Jacp.setUp()
+            Jacp.assemble()
+            self.ts.setRHSJacobianP(self.evalJacobianP, Jacp)
+
+            self.adj_u = []
+            self.adj_u.append(PETSc.Vec().createSeq(self.n, comm=self.comm))
+            self.adj_p = []
+            self.adj_p.append(PETSc.Vec().createSeq(self.np, comm=self.comm))
+            # self.adj_p.append(torch.zeros_like(self.flat_params))
+            self.ts.setCostGradients(self.adj_u, self.adj_p)
+            self.ts.setSaveTrajectory()
+
         # self.ts.setMaxSteps(1000)
         self.ts.setFromOptions()
         self.ts.setTimeStep(step_size) # overwrite the command-line option
