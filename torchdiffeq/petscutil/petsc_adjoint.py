@@ -48,6 +48,7 @@ class ODEPetsc(object):
 
     def __init__(self):
         self.ts = PETSc.TS().create(comm=self.comm)
+        self.has_monitor = False
 
     def evalFunction(self, ts, t, U, F):
         f = F.array
@@ -64,6 +65,13 @@ class ODEPetsc(object):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
         self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
+
+    def saveSolution(self, ts, stepno, t, U):
+        """"Save the solutions at intermediate points"""
+        if abs(t-self.sol_times[self.cur_index]) < 1e-6:
+            unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
+            self.sol_list.append(unew)
+            self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True):
         self.u_tensor = u_tensor
@@ -109,6 +117,10 @@ class ODEPetsc(object):
             self.ts.setCostGradients(self.adj_u, self.adj_p)
             self.ts.setSaveTrajectory()
 
+        if not self.has_monitor:
+          self.ts.setMonitor(self.saveSolution)
+          self.has_monitor = True
+
         # self.ts.setMaxSteps(1000)
         self.ts.setFromOptions()
         self.ts.setTimeStep(step_size) # overwrite the command-line option
@@ -119,17 +131,15 @@ class ODEPetsc(object):
         U = self.U
         U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
         ts = self.ts
-        solution = [u0]
-        t = t.to(u0[0].device, torch.float64)
-        ts.setTime(t[0])
+        self.sol_times = t.to(u0[0].device, torch.float64)
+        self.sol_list = []
+        self.cur_index = 0
+        ts.setTime(self.sol_times[0])
+        ts.setMaxTime(self.sol_times[-1])
         ts.setStepNumber(0)
-        for i in range(1, len(t)):
-            ts.setMaxTime(t[i])
-            ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
-            ts.solve(U)
-            unew = torch.from_numpy(U.getArray().reshape(u0.size())).type(torch.FloatTensor)
-            solution.append(unew)
-        solution = torch.stack([solution[i] for i in range(len(t))], dim=0)
+        ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
+        ts.solve(U)
+        solution = torch.stack([self.sol_list[i] for i in range(len(self.sol_times))], dim=0)
         return solution
 
     def petsc_adjointsolve(self, t):
