@@ -9,7 +9,7 @@ class JacShell:
         self.ode_ = ode
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.getArray().reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
+        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
         y = Y.array
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
@@ -29,7 +29,7 @@ class JacPShell:
         self.ode_ = ode
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.getArray().reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
+        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
         y = Y.array
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
@@ -51,19 +51,19 @@ class ODEPetsc(object):
 
     def evalFunction(self, ts, t, U, F):
         f = F.array
-        self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
         dudt = self.func(t, self.u_tensor).cpu().detach().numpy()
         f[:] = dudt.flatten()
 
     def evalJacobian(self, ts, t, U, Jac, JacPre):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
     def evalJacobianP(self, ts, t, U, Jacp):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
     def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True):
         self.u_tensor = u_tensor
