@@ -9,7 +9,7 @@ import torch.optim as optim
 
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5', 'adams'], default='dopri5')
-parser.add_argument('--data_size', type=int, default=10001)
+parser.add_argument('--data_size', type=int, default=1001)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
 parser.add_argument('--niters', type=int, default=2000)
@@ -17,6 +17,7 @@ parser.add_argument('--test_freq', type=int, default=20)
 parser.add_argument('--viz', action='store_true')
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--adjoint', action='store_true')
+parser.add_argument('--step_size', type=float, default=0.025)
 args = parser.parse_args()
 
 if args.adjoint:
@@ -39,7 +40,10 @@ class Lambda(nn.Module):
 
 with torch.no_grad():
     true_y = odeint(Lambda(), true_y0, t, method='dopri5')
-
+    # true_y = odeint(Lambda(), true_y0, t, method='rk4alt', options={'step_size':args.step_size})
+    # print(true_y)
+    # import sys
+    # sys.exit()
 
 def get_batch():
     s = torch.from_numpy(np.random.choice(np.arange(args.data_size - args.batch_time, dtype=np.int64), args.batch_size, replace=False))
@@ -154,8 +158,6 @@ if __name__ == '__main__':
     func = ODEFunc()
     optimizer = optim.RMSprop(func.parameters(), lr=1e-3)
     end = time.time()
-    # import sys
-    # sys.exit()
 
     time_meter = RunningAverageMeter(0.97)
     loss_meter = RunningAverageMeter(0.97)
