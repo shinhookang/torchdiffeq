@@ -18,6 +18,7 @@ parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--test_freq', type=int, default=20)
 parser.add_argument('--viz', action='store_true')
 parser.add_argument('--gpu', type=int, default=0)
+parser.add_argument('--step_size', type=float, default=0.025)
 args, unknown = parser.parse_known_args()
 
 gpu = args.gpu
@@ -26,6 +27,7 @@ test_freq = args.test_freq
 data_size = args.data_size
 batch_time = args.batch_time
 batch_size = args.batch_size
+step_size = args.step_size
 
 import petsc4py
 sys.argv = [sys.argv[0]] + unknown
@@ -47,12 +49,14 @@ class Lambda(nn.Module):
         return torch.mm(y**3, true_A)
 
 ode0 = petsc_adjoint.ODEPetsc()
-ode0.setupTS(true_y0, Lambda(), step_size=0.05, enable_adjoint=False)
+ode0.setupTS(true_y0, Lambda(), step_size=step_size, enable_adjoint=False)
 
 with torch.no_grad():
     true_y = ode0.odeint(true_y0, t)
+    print(true_y)
+    # import sys
+    # sys.exit()
 
-print(true_y)
 
 def get_batch():
     s = torch.from_numpy(np.random.choice(np.arange(data_size - batch_time, dtype=np.int64), batch_size, replace=False))
@@ -117,7 +121,7 @@ def visualize(true_y, pred_y, odefunc, itr):
         plt.savefig('png/{:03d}'.format(itr))
         plt.draw()
         plt.pause(0.001)
-        
+
 class ODEFunc(nn.Module):
 
     def __init__(self):
@@ -169,7 +173,7 @@ if __name__ == '__main__':
     loss_meter = RunningAverageMeter(0.97)
 
     ode = petsc_adjoint.ODEPetsc()
-    ode.setupTS(batch_y0, func, 0.05)
+    ode.setupTS(batch_y0, func, step_size=step_size)
     for itr in range(1, niters + 1):
         optimizer.zero_grad()
         batch_y0, batch_t, batch_y = get_batch()
@@ -183,7 +187,7 @@ if __name__ == '__main__':
 
         if itr % test_freq == 0:
             with torch.no_grad():
-                ode0.setupTS(true_y0, func, step_size=0.05, enable_adjoint=False)
+                ode0.setupTS(true_y0, func, step_size=step_size, enable_adjoint=False)
                 pred_y = ode0.odeint_adjoint(true_y0, t)
                 loss = torch.mean(torch.abs(pred_y - true_y))
                 print('Iter {:04d} | Total Loss {:.6f}'.format(itr, loss.item()))
