@@ -9,7 +9,7 @@ class JacShell:
         self.ode_ = ode
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.getArray().reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
+        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
         y = Y.array
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
@@ -29,7 +29,7 @@ class JacPShell:
         self.ode_ = ode
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.getArray().reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
+        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
         y = Y.array
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
@@ -48,24 +48,32 @@ class ODEPetsc(object):
 
     def __init__(self):
         self.ts = PETSc.TS().create(comm=self.comm)
+        self.has_monitor = False
 
     def evalFunction(self, ts, t, U, F):
         f = F.array
-        self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
         dudt = self.func(t, self.u_tensor).cpu().detach().numpy()
         f[:] = dudt.flatten()
 
     def evalJacobian(self, ts, t, U, Jac, JacPre):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
     def evalJacobianP(self, ts, t, U, Jacp):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.u_tensor = torch.from_numpy(U.getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
-    def setupTS(self, u_tensor, func, step_size=0.01, method='dopri5_fixed',enable_adjoint=True):
+    def saveSolution(self, ts, stepno, t, U):
+        """"Save the solutions at intermediate points"""
+        if abs(t-self.sol_times[self.cur_index]) < 1e-6:
+            unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
+            self.sol_list.append(unew)
+            self.cur_index = self.cur_index+1
+
+    def setupTS(self, u_tensor, func, step_size=0.01, method='dopri5_fixed', enable_adjoint=True):
         self.u_tensor = u_tensor
         self.n = u_tensor.numel()
         self.U = PETSc.Vec().createWithArray(self.u_tensor.numpy()) # convert to PETSc vec
@@ -117,7 +125,10 @@ class ODEPetsc(object):
             # self.adj_p.append(torch.zeros_like(self.flat_params))
             self.ts.setCostGradients(self.adj_u, self.adj_p)
             self.ts.setSaveTrajectory()
-           
+
+        if not self.has_monitor:
+          self.ts.setMonitor(self.saveSolution)
+          self.has_monitor = True
 
         # self.ts.setMaxSteps(1000)
         self.ts.setFromOptions()
@@ -129,21 +140,15 @@ class ODEPetsc(object):
         U = self.U
         U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
         ts = self.ts
-        solution = [u0]
-        t = t.to(u0[0].device, torch.float64)
-        ts.setTime(t[0])
+        self.sol_times = t.to(u0[0].device, torch.float64)
+        self.sol_list = []
+        self.cur_index = 0
+        ts.setTime(self.sol_times[0])
+        ts.setMaxTime(self.sol_times[-1])
         ts.setStepNumber(0)
-        
-        
-
-        for i in range(1, len(t)):
-            ts.setMaxTime(t[i])
-            ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
-            ts.solve(U)
-
-            unew = torch.from_numpy(U.getArray().reshape(u0.size())).type(torch.FloatTensor)
-            solution.append(unew)
-        solution = torch.stack([solution[i] for i in range(len(t))], dim=0)
+        ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
+        ts.solve(U)
+        solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_times))], dim=0)
         return solution
 
     def petsc_adjointsolve(self, t):
@@ -176,7 +181,7 @@ class OdeintAdjointMethod(torch.autograd.Function):
         Solve the ODE forward in time
         """
         assert len(args) >= 4, 'Internal error: all arguments required.'
-        y0, t, flat_params, ode =  args[-4], args[-3], args[-2], args[-1]
+        y0, t, flat_params, ode = args[-4], args[-3], args[-2], args[-1]
 
         ctx.ode = ode
 
