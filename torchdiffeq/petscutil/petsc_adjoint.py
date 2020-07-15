@@ -73,7 +73,7 @@ class ODEPetsc(object):
             self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
 
-    def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True):
+    def setupTS(self, u_tensor, func, step_size=0.01, method='dopri5_fixed', enable_adjoint=True):
         self.u_tensor = u_tensor
         self.n = u_tensor.numel()
         self.U = PETSc.Vec().createWithArray(self.u_tensor.numpy()) # convert to PETSc vec
@@ -85,6 +85,15 @@ class ODEPetsc(object):
 
         self.ts.reset()
         self.ts.setType(PETSc.TS.Type.RK)
+        # set the solver here. Currently only RK families are included.
+        if method=='euler':
+            self.ts.setRKType('1fe')
+        elif method == 'midpoint':  # 2a is Heun's method, not midpoint.
+            self.ts.setRKType('2a')
+        elif method == 'rk4':
+            self.ts.setRKType('4')
+        elif method == 'dopri5_fixed':
+            self.ts.setRKType('5dp')
         self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
 
         F = self.U.duplicate()
