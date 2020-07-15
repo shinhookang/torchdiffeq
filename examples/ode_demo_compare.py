@@ -13,8 +13,8 @@ import copy
 # print("first init: ",OptDB.getAll())
 
 
-
-sys.path.append('/home/zhaow/NODE')
+#sys.path.append('/home/zhaow/NODE')
+sys.path.append('/home/zhaow/torchdiffeq')
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'adams','euler'], default='dopri5')
 parser.add_argument('--step_size',type=eval, default=1)
@@ -52,7 +52,7 @@ else:
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
 true_y0 = torch.tensor([[2., 0.]])
-t = torch.linspace(0., 25., args.data_size)
+t = torch.linspace(0., 1., args.data_size)
 true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]])
 options = {}
 options.update({'step_size':args.step_size})
@@ -65,7 +65,6 @@ class Lambda(nn.Module):
 
 with torch.no_grad():
     
-    #t = torch.tensor([0., 0.5])
     options_true = {}
     options_true.update({'step_size':args.step_size})
 
@@ -77,7 +76,7 @@ with torch.no_grad():
     print(true_y)
     print(true_y2)
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
-    #exit()
+    exit()
 
 
 def get_batch():
@@ -226,7 +225,7 @@ if __name__ == '__main__':
         start_PETSC = end_NODE
         
         pred_y_PETSC = ode.odeint_adjoint(batch_y0, batch_t)
-       
+        #pred_y_PETSC = torch.reshape(pred_y_PETSC, batch_y.shape)
         nfe_f_PETSC = func_PETSC.nfe
         func_PETSC.nfe = 0
 
