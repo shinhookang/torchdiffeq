@@ -64,7 +64,7 @@ class Lambda(nn.Module):
 
 
 with torch.no_grad():
-    
+    t = torch.tensor([0.,0.12,1.])
     options_true = {}
     options_true.update({'step_size':args.step_size})
 
@@ -76,7 +76,7 @@ with torch.no_grad():
     print(true_y)
     print(true_y2)
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
- #   exit()
+    exit()
 
 
 def get_batch():

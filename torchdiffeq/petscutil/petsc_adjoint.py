@@ -4,6 +4,7 @@ from .._impl.misc import _flatten, _flatten_convert_none_to_zeros
 import petsc4py
 from petsc4py import PETSc
 
+
 class JacShell:
     def __init__(self, ode):
         self.ode_ = ode
@@ -68,7 +69,8 @@ class ODEPetsc(object):
 
     def saveSolution(self, ts, stepno, t, U):
         """"Save the solutions at intermediate points"""
-        if abs(t-self.sol_times[self.cur_index]) < 1e-6:
+        dt = ts.getTimeStep()
+        if True:#abs(t-self.sol_times[self.cur_index]) < 1E-16:
             unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
             self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
@@ -140,7 +142,12 @@ class ODEPetsc(object):
         U = self.U
         U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
         ts = self.ts
-        self.sol_times = t.to(u0[0].device, torch.float64)
+        
+        #self.sol_times = t.to(u0[0].device, torch.float64)
+        self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
+        #print(self.sol_times)
+        assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
+        self.sol_times = self.sol_times.to(u0[0])
         self.sol_list = []
         self.cur_index = 0
         ts.setTime(self.sol_times[0])
@@ -148,8 +155,44 @@ class ODEPetsc(object):
         ts.setStepNumber(0)
         ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
         ts.solve(U)
-        solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_times))], dim=0)
-        return solution
+        solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_list))], dim=0)
+
+        j = 1
+        sol_interp = [u0]
+        for j0 in range(len(solution)-1):
+            t0, t1, u00, u1 = self.sol_times[j0], self.sol_times[j0+1], solution[j0], solution[j0+1]
+            while j < len(t) and t1 > t[j] - self.step_size/1000:# and t1 > t0:
+                #print(t1,t[j])
+                sol_interp.append(self._linear_interp(t0,t1,u00,u1,t[j]))
+                j += 1
+                
+        
+        sol_interp = torch.stack([sol_interp[i] for i in range(len(sol_interp))], dim=0)
+        #print(sol_interp.shape)
+        #print(len(t))
+        
+        return sol_interp
+
+    def _grid_constructor(self, t):
+        """Construct uniform time grid with step size self.step_size"""
+        start_time = t[0]
+        end_time = t[-1]
+        niters = torch.ceil((end_time - start_time) / self.step_size + 1).item()
+        t_infer = torch.arange(0, niters).to(t) * self.step_size + start_time
+        if t_infer[-1] > t[-1]:
+            t_infer[-1] = t[-1]
+        return t_infer
+    
+    def _linear_interp(self, t0, t1, u0, u1, tj):
+        """ Do linear interpolation if tj falls between t0 and t1 """
+        if tj == t0:
+            return u0
+        if tj == t1:
+            return u1
+        t0_, t1_, tj_ = t0.to(u0[0]), t1.to(u0[0]), tj.to(u0[0])
+        slope = torch.stack([(u1_ - u0_) / (t1_ - t0_) for u0_, u1_, in zip(u0, u1)])
+        return torch.stack([u0_ + slope_ * (tj_ - t0_) for u0_, slope_ in zip(u0, slope)  ])
+
 
     def petsc_adjointsolve(self, t):
         t = t.to(self.u_tensor.device, torch.float64)
