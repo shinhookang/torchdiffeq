@@ -24,7 +24,7 @@ parser.add_argument('--batch_size', type=int, default=20)
 parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--test_freq', type=int, default=20)
 parser.add_argument('--viz', action='store_true')
-parser.add_argument('--gpu', type=int, default=0)
+parser.add_argument('--gpu', type=int, default=1)
 parser.add_argument('--adjoint', action='store_true')
 args, unknown = parser.parse_known_args()
 
@@ -45,7 +45,7 @@ from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
 #from petscutil import petsc_adjoint
 
 if args.adjoint:
-    from torchdiffeq import odeint_adjoint as odeint
+    from torchdiffeq import odeint_adjoint_test as odeint
 else:
     from torchdiffeq import odeint
 
@@ -64,7 +64,7 @@ class Lambda(nn.Module):
 
 
 with torch.no_grad():
-    t = torch.tensor([0.,0.12,1.])
+  #  t = torch.tensor([0.,0.12,1.])
     options_true = {}
     options_true.update({'step_size':args.step_size})
 
@@ -76,7 +76,7 @@ with torch.no_grad():
     print(true_y)
     print(true_y2)
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
-    exit()
+    #exit()
 
 
 def get_batch():
@@ -216,8 +216,8 @@ if __name__ == '__main__':
 
         batch_y0, batch_t, batch_y = get_batch()
         start_NODE = time.time()    
-        pred_y_NODE = odeint(func_NODE, batch_y0, batch_t,method=args.method,options=options)
-        loss_NODE = torch.mean(torch.abs(pred_y_NODE - batch_y))
+        pred_y_NODE = odeint(func_NODE.to(device), batch_y0.to(device), batch_t.to(device),method=args.method,options=options).to(device)
+        loss_NODE = torch.mean(torch.abs(pred_y_NODE.to(device) - batch_y.to(device)))
         end_NODE = time.time()
         nfe_f_NODE = func_NODE.nfe
         func_NODE.nfe = 0
@@ -225,7 +225,6 @@ if __name__ == '__main__':
         start_PETSC = end_NODE
         
         pred_y_PETSC = ode.odeint_adjoint(batch_y0, batch_t)
-        #pred_y_PETSC = torch.reshape(pred_y_PETSC, batch_y.shape)
         nfe_f_PETSC = func_PETSC.nfe
         func_PETSC.nfe = 0
 
@@ -249,11 +248,10 @@ if __name__ == '__main__':
         total_num = 0
         array = []
         array2 = []
-        for p1, p2 in zip(func_NODE.parameters(), func_PETSC.parameters()):
-            if np.abs(p1.data.ne(p2.data).sum().cpu()) > 1E-4:
-                
+        for p1, p2 in zip(func_NODE.parameters(), func_PETSC.parameters()):  
+            if np.abs(p1.data.cpu().ne(p2.data.cpu()).sum().cpu()) > 1E-4:        
                 num_diff += 1
-                norm_diff += np.abs(p1.data.ne(p2.data).sum().cpu())
+                norm_diff += np.abs(p1.data.cpu().ne(p2.data.cpu()).sum().cpu())
                 array = array + [p1.grad.min().cpu().detach().numpy().tolist()] 
                 array2 = array2 + [p2.grad.min().cpu().detach().numpy().tolist()]
                 total_num += 1
@@ -267,8 +265,8 @@ if __name__ == '__main__':
         if itr % args.test_freq == 0:
             with torch.no_grad():
                 
-                pred_y_NODE = odeint(func_NODE, true_y0, t,method=args.method,options=options)
-                loss_NODE = torch.mean(torch.abs(pred_y_NODE - true_y))
+                pred_y_NODE = odeint(func_NODE.to(device), true_y0.to(device), t.to(device),method=args.method,options=options)
+                loss_NODE = torch.mean(torch.abs(pred_y_NODE.to(device) - true_y.to(device)))
                 print('NODE : Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_NODE-start_NODE, loss_NODE.item(),nfe_f_NODE, nfe_b_NODE))
                 #func_NODE.nfe=0
                 

@@ -9,8 +9,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-import petsc4py
-from petsc4py import PETSc
+#import petsc4py
+#from petsc4py import PETSc
 
 import copy
 torch.manual_seed(0)
@@ -38,7 +38,9 @@ parser.add_argument('--Nt',type=int, default = 1)
 parser.add_argument('--impl',type=str, default='ANODE', choices = ['NODE','ANODE','NODE_adj','PETSc'])
 args, unknown = parser.parse_known_args()
 sys.argv = [sys.argv[0]] + unknown
+import petsc4py
 petsc4py.init(sys.argv)
+from petsc4py import PETSc
 sys.path.append('/home/zhaow/torchdiffeq')
 sys.path.append('/home/zhaow/anode')
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')

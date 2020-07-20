@@ -70,6 +70,7 @@ class ODEPetsc(object):
     def saveSolution(self, ts, stepno, t, U):
         """"Save the solutions at intermediate points"""
         dt = ts.getTimeStep()
+        print(dt)
         if True:#abs(t-self.sol_times[self.cur_index]) < 1E-16:
             unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
             self.sol_list.append(unew)
@@ -138,9 +139,9 @@ class ODEPetsc(object):
 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
-        # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
+        self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         U = self.U
-        U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
+        U = PETSc.Vec().createWithArray(self.u0.numpy()) # convert to PETSc vec
         ts = self.ts
         
         #self.sol_times = t.to(u0[0].device, torch.float64)
