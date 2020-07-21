@@ -9,8 +9,9 @@ import torch.optim as optim
 
 import sys
 
+
 parser = argparse.ArgumentParser('ODE demo')
-parser.add_argument('--method', type=str, choices=['dopri5', 'adams'], default='dopri5')
+parser.add_argument('--method', type=str, choices=['dopri5', 'adams','dopri5_fixed','rk4','euler'], default='dopri5')
 parser.add_argument('--data_size', type=int, default=1001)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
@@ -35,8 +36,9 @@ petsc4py.init(sys.argv)
 from petsc4py import PETSc
 # OptDB = PETSc.Options()
 # print("first init: ",OptDB.getAll())
-
-from torchdiffeq import petsc_adjoint
+sys.path.append('/home/zhaow/torchdiffeq')
+import torchdiffeq
+from torchdiffeq.petscutil import petsc_adjoint
 
 device = torch.device('cuda:' + str(gpu) if torch.cuda.is_available() else 'cpu')
 
@@ -59,7 +61,7 @@ with torch.no_grad():
 
 
 def get_batch():
-    s = torch.from_numpy(np.random.choice(np.arange(data_size - batch_time, dtype=np.int64), batch_size, replace=False))
+    s = torch.from_numpy(np.random.choice(np.arange(data_size - batch_time, dtype=np.int64), batch_size, replace=True))
     batch_y0 = true_y[s]  # (M, D)
     batch_t = t[:batch_time]  # (T)
     batch_y = torch.stack([true_y[s + i] for i in range(batch_time)], dim=0)  # (T, M, D)

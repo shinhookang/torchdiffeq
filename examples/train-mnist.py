@@ -526,11 +526,11 @@ if __name__ == '__main__':
         if args.breakpoint == True:
             import pdb; pdb.set_trace()
       #  ODEfunc.conv1._layer.weight.register_hook(lambda x:print(x.grad))
-        exit()
+        #exit()
         loss.backward()
        
 
-        print(loss.item())
+        #print(loss.item())
         #exit()
             #import pdb; pdb.set_trace()
         

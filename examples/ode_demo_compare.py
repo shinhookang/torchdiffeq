@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 import sys
 import copy
+import matplotlib.pyplot as plt
 
 # OptDB = PETSc.Options()
 # print("first init: ",OptDB.getAll())
@@ -45,14 +46,14 @@ from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
 #from petscutil import petsc_adjoint
 
 if args.adjoint:
-    from torchdiffeq import odeint_adjoint_test as odeint
+    from torchdiffeq import odeint_adjoint as odeint
 else:
     from torchdiffeq import odeint
 
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
 true_y0 = torch.tensor([[2., 0.]])
-t = torch.linspace(0., 1., args.data_size)
+t = torch.linspace(0., 25., args.data_size)
 true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]])
 options = {}
 options.update({'step_size':args.step_size})
@@ -75,6 +76,7 @@ with torch.no_grad():
     true_y = ode0.odeint_adjoint(true_y0,t)
     print(true_y)
     print(true_y2)
+    del ode0
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
     #exit()
 
@@ -207,7 +209,8 @@ if __name__ == '__main__':
 
     time_meter = RunningAverageMeter(0.97)
     loss_meter = RunningAverageMeter(0.97)
-        
+    loss_NODE_array=[] 
+    loss_PETSc_array = [] 
     for itr in range(1, args.niters + 1):
         
         
@@ -261,23 +264,29 @@ if __name__ == '__main__':
         unit_array2 = array2 / (np. linalg. norm(array2 ) + 1E-16)
         dot_product = np.dot(unit_array, unit_array2)
         #   end of comparison
-
+        
         if itr % args.test_freq == 0:
             with torch.no_grad():
                 
                 pred_y_NODE = odeint(func_NODE.to(device), true_y0.to(device), t.to(device),method=args.method,options=options)
-                loss_NODE = torch.mean(torch.abs(pred_y_NODE.to(device) - true_y.to(device)))
-                print('NODE : Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_NODE-start_NODE, loss_NODE.item(),nfe_f_NODE, nfe_b_NODE))
+                loss_NODE_array=loss_NODE_array + [torch.mean(torch.abs(pred_y_NODE.to(device) - true_y.to(device)))]
+                print('NODE : Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_NODE-start_NODE, loss_NODE_array[-1],nfe_f_NODE, nfe_b_NODE))
                 #func_NODE.nfe=0
                 
                 ode0 = petsc_adjoint.ODEPetsc()
-                ode0.setupTS(true_y0, func_PETSC, step_size=args.step_size, method=args.method,enable_adjoint=False)
+                ode0.setupTS(true_y0, func_PETSC, step_size=args.step_size, method=args.method, enable_adjoint=False)
                 pred_y_PETSC = ode0.odeint_adjoint(true_y0, t)
-                loss_PETSC = torch.mean(torch.abs(pred_y_PETSC - true_y))
-                print('PETSC: Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_PETSC-start_PETSC, loss_PETSC.item(),nfe_f_PETSC, nfe_b_PETSC))
+                loss_PETSc_array= loss_PETSc_array + [torch.mean(torch.abs(pred_y_PETSC - true_y))]
+                print('PETSC: Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_PETSC-start_PETSC, loss_PETSc_array[-1],nfe_f_PETSC, nfe_b_PETSC))
                 #func_PETSC.nfe=0
+        #        print(torch.norm(pred_y_NODE - pred_y_PETSC))
                 print('Dot product of normalized gradients: {:.6f} | number of different params: {:04d} / {:04d}\n'.format(dot_product,num_diff,total_num))
                 #visualize(true_y, pred_y, func, ii)
                 ii += 1
                 
         end = time.time()
+    print(loss_NODE_array)
+    plt.plot(loss_NODE_array, 'o',label='NODE test loss')
+    plt.plot(loss_PETSc_array, '*',label='PETSc test loss')
+    plt.legend()
+    plt.savefig('loss.png')
