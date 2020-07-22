@@ -11,7 +11,7 @@ import sys
 
 
 parser = argparse.ArgumentParser('ODE demo')
-parser.add_argument('--method', type=str, choices=['dopri5', 'adams','dopri5_fixed','rk4','euler'], default='dopri5')
+parser.add_argument('--method', type=str, choices=['dopri5', 'adams','dopri5_fixed','rk4','euler'], default='rk4')
 parser.add_argument('--data_size', type=int, default=1001)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
@@ -29,6 +29,13 @@ data_size = args.data_size
 batch_time = args.batch_time
 batch_size = args.batch_size
 step_size = args.step_size
+
+
+# Set these random seeds, so everything can be reproduced. 
+np.random.seed(0)
+torch.manual_seed(0)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 import petsc4py
 sys.argv = [sys.argv[0]] + unknown

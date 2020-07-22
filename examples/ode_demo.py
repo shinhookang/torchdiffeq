@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 parser = argparse.ArgumentParser('ODE demo')
-parser.add_argument('--method', type=str, choices=['dopri5', 'adams'], default='dopri5')
+parser.add_argument('--method', type=str, choices=['dopri5', 'adams', 'rk4'], default='dopri5')
 parser.add_argument('--data_size', type=int, default=1001)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
@@ -19,6 +19,16 @@ parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--adjoint', action='store_true')
 parser.add_argument('--step_size', type=float, default=0.025)
 args = parser.parse_args()
+
+
+# Set these random seeds, so everything can be reproduced. 
+np.random.seed(0)
+torch.manual_seed(0)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+import sys
+sys.path.append('/home/zhaow/torchdiffeq')
 
 if args.adjoint:
     from torchdiffeq import odeint_adjoint as odeint
@@ -46,7 +56,7 @@ with torch.no_grad():
     # sys.exit()
 
 def get_batch():
-    s = torch.from_numpy(np.random.choice(np.arange(args.data_size - args.batch_time, dtype=np.int64), args.batch_size, replace=False))
+    s = torch.from_numpy(np.random.choice(np.arange(args.data_size - args.batch_time, dtype=np.int64), args.batch_size, replace=True))
     batch_y0 = true_y[s]  # (M, D)
     batch_t = t[:args.batch_time]  # (T)
     batch_y = torch.stack([true_y[s + i] for i in range(args.batch_time)], dim=0)  # (T, M, D)
