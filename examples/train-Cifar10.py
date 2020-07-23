@@ -175,7 +175,7 @@ class ODEBlock_PETSc(nn.Module):
         super(ODEBlock_PETSc, self).__init__()
         self.odefunc = odefunc
         self.options = {}
-        self.ode = petsc_adjoint.ODEPetsc()
+        
         self.step_size = 1./float(args.Nt)
         if args.method == 'Euler':
             self.method = 'euler'
@@ -197,6 +197,7 @@ class ODEBlock_PETSc(nn.Module):
         
 
     def forward(self, x):
+        self.ode = petsc_adjoint.ODEPetsc()
         self.ode.setupTS(torch.zeros_like(x).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
         out = self.ode.odeint_adjoint(x, self.integration_time.type_as(x))
         return out[-1]
