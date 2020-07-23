@@ -42,7 +42,7 @@ torch.backends.cudnn.benchmark = False
 
 import torchdiffeq
 
-from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
+from torchdiffeq.petscutil import petsc_adjoint_old as petsc_adjoint
 #from petscutil import petsc_adjoint
 
 if args.adjoint:
@@ -228,9 +228,10 @@ if __name__ == '__main__':
         start_PETSC = end_NODE
         
         pred_y_PETSC = ode.odeint_adjoint(batch_y0, batch_t)
+        pred_y_PETSC = torch.reshape(pred_y_PETSC, batch_y.shape)
         nfe_f_PETSC = func_PETSC.nfe
         func_PETSC.nfe = 0
-
+        
 
         loss_PETSC = torch.mean(torch.abs(pred_y_PETSC - batch_y))
         end_PETSC = time.time()

@@ -45,8 +45,12 @@ sys.path.append('/home/zhaow/torchdiffeq')
 sys.path.append('/home/zhaow/anode')
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
+
 import torchdiffeq
-from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
+if torch.cuda.is_available:
+    from torchdiffeq.petscutil import petsc_adjoint_cuda as petsc_adjoint
+else:
+    from torchdiffeq.petscutil import petsc_adjoint_old as petsc_adjoint
 
 if args.impl == 'NODE_adj':
     from torchdiffeq import odeint_adjoint as odeint
@@ -193,7 +197,9 @@ class ODEBlock_ANODE(nn.Module):
         elif args.method == 'RK2':
             self.options.update({'method':'RK2'})
         elif args.method == 'RK4':
-            self.options.update({'method':'RK4_alt'})
+            #self.options.update({'method':'RK4_alt'})
+            self.options.update({'method':'RK4'})
+            
         elif args.method == 'Dopri5_fixed':
             self.options.update({'method':'Dopri5'})
         
@@ -511,8 +517,9 @@ if __name__ == '__main__':
             #if itr % batches_per_epoch == 0:
             #    gpu_tracker.track()
         logits = model(x)
+        
         loss = criterion(logits, y)
-        print(loss.item())
+        #print(loss.item())
         #exit()
         if is_odenet:
             nfe_forward = feature_layers[0].nfe
@@ -525,15 +532,9 @@ if __name__ == '__main__':
             
         if args.breakpoint == True:
             import pdb; pdb.set_trace()
-      #  ODEfunc.conv1._layer.weight.register_hook(lambda x:print(x.grad))
-        #exit()
-        loss.backward()
-       
 
-        #print(loss.item())
+        loss.backward()
         #exit()
-            #import pdb; pdb.set_trace()
-        
         optimizer.step()
         if itr % batches_per_epoch == 1:
             train_loss = 0
@@ -558,8 +559,8 @@ if __name__ == '__main__':
       ############################################################################################
         if itr % batches_per_epoch == 0:
             with torch.no_grad():
-                train_acc = 0#accuracy(model_test, train_eval_loader)
-                val_acc = 0#accuracy(model_test, test_loader)
+                train_acc =accuracy(model_test, train_eval_loader)
+                val_acc = accuracy(model_test, test_loader)
                 
                 
             if val_acc > best_acc:
