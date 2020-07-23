@@ -241,20 +241,19 @@ test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = test_batch_
 
 if args.impl == 'PETSc':
     ODEBlock = ODEBlock_PETSc#(train=True)
-    ODEBlock_test = ODEBlock_PETSc#(train=False)
+    #ODEBlock_test = ODEBlock_PETSc#(train=False)
 elif args.impl == 'ANODE':
     ODEBlock = ODEBlock_ANODE
-    ODEBlock_test = ODEBlock
+    #ODEBlock_test = ODEBlock
 else:
     ODEBlock = ODEBlock_NODE
-    ODEBlock_test = ODEBlock
+    #ODEBlock_test = ODEBlock
     
 
 if args.network == 'sqnxt':
     net = SqNxt_23_1x(10, ODEBlock)
-    net_test = SqNxt_23_1x(10, ODEBlock_test)
-    for param1, param2 in zip(net.parameters(), net_test.parameters()):
-        param2.data = param1.data
+    #net_test = SqNxt_23_1x(10, ODEBlock_test)
+    
     #print(summary(net,torch.zeros((1,3,32,32))))
     #exit()
 elif args.network == 'resnet':
@@ -264,7 +263,7 @@ net.apply(conv_init)
 print(net)
 if is_use_cuda:
     net.to(device)
-    net_test.to(device)
+    #net_test.to(device)
     #net = nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
 criterion = nn.CrossEntropyLoss()
 
@@ -331,14 +330,14 @@ def train(epoch):
         
 def test(epoch):
     global best_acc
-    net_test.eval()
+    net.eval()
     test_loss = 0
     correct = 0
     total = 0
     for idx, (inputs, labels) in enumerate(test_loader):
         if is_use_cuda:
             inputs, labels = inputs.to(device), labels.to(device)
-        outputs = net_test(inputs)
+        outputs = net(inputs)
         loss = criterion(outputs, labels)
         
         test_loss  += loss.item()
