@@ -14,9 +14,9 @@ class JacShell:
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
             self.ode_.u_tensor = self.ode_.u_tensor.detach().requires_grad_(True)
-            func_eval = self.ode_.func(self.ode_.t, self.ode_.u_tensor)
+            self.ode_.func_eval = self.ode_.func(self.ode_.t, self.ode_.u_tensor)
             vjp_u = torch.autograd.grad(
-                func_eval, self.ode_.u_tensor,
+                self.ode_.func_eval, self.ode_.u_tensor,
                 self.x_tensor, allow_unused=True, retain_graph=True
             )
         # autograd.grad returns None if no gradient, set to zero.
@@ -34,7 +34,7 @@ class JacPShell:
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
             # t = t.to(self.u_tensor.device).detach().requires_grad_(False)
-            func_eval = self.ode_.func(self.ode_.t, self.ode_.u_tensor)
+            func_eval = self.ode_.func_eval#self.ode_.func(self.ode_.t, self.ode_.u_tensor)
             vjp_params = torch.autograd.grad(
                 func_eval, f_params,
                 self.x_tensor, allow_unused=True, retain_graph=True
