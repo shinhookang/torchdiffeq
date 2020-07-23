@@ -137,9 +137,9 @@ class ODEPetsc(object):
 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
-        # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
+        self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         U = self.U
-        U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
+        U = PETSc.Vec().createWithArray(self.u0.numpy()) # convert to PETSc vec
         ts = self.ts
         self.sol_times = t.to(u0[0].device, torch.float64)
         self.sol_list = []
@@ -149,6 +149,8 @@ class ODEPetsc(object):
         ts.setStepNumber(0)
         ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
         ts.solve(U)
+        #print(self.sol_times)
+        #print(self.sol_list)
         solution = torch.stack([self.sol_list[i] for i in range(len(self.sol_times))], dim=0)
         return solution
 
@@ -201,7 +203,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
         with torch.no_grad():
             ctx.ode.adj_u[0].setArray(grad_output[0][-1].numpy())
             ctx.ode.adj_p[0].zeroEntries()
-
             for i in range(T-1, 0, -1):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i - 1]]))
                 adj_u_tensor += grad_output[0][i-1] # add forcing

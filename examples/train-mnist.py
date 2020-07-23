@@ -227,27 +227,27 @@ class ODEBlock_PETSc(nn.Module):
         self.ode = petsc_adjoint.ODEPetsc()
         self.step_size = 1./float(args.Nt)
         if args.method == 'Euler':
-            Method = 'euler'
+            self.method = 'euler'
             
         elif args.method == 'RK2':
-            Method = 'midpoint'
+            self.method = 'midpoint'
         elif args.method == 'RK4':
-            Method = 'rk4'
+            self.method = 'rk4'
         elif args.method == 'Dopri5':
-            Method = 'dopri5'
+            self.method = 'dopri5'
 
         elif args.method == 'Dopri5_fixed':
-            Method = 'dopri5_fixed'
-        if train:
-            self.ode.setupTS(torch.zeros(args.batch_size,64,6,6).to(device), self.odefunc.to(device), self.step_size, Method, enable_adjoint=True)
-        else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,64,6,6).to(device), self.odefunc.to(device), self.step_size, Method, enable_adjoint=False)
-       
-        self.integration_time = torch.tensor(  [0,1] ).float()
+            self.method = 'dopri5_fixed'
         
+        self.integration_time = torch.tensor(  [0,1] ).float()
+        self.train = train
 
     def forward(self, x):
-        
+        if self.train:
+            self.ode.setupTS(torch.zeros_like(x).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+        else:
+            self.ode.setupTS(torch.zeros_like(x).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
+       
         out = self.ode.odeint_adjoint(x, self.integration_time.type_as(x))
         
         return out[-1]
