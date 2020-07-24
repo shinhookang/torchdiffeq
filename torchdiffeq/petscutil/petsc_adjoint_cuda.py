@@ -82,7 +82,7 @@ class ODEPetsc(object):
         self.device = u_tensor.device
         self.u_tensor = u_tensor.clone().cpu()
         self.n = u_tensor.numel()
-        self.U = PETSc.Vec().createWithArray(self.u_tensor.cpu().numpy()) # convert to PETSc vec
+        self.U = PETSc.Vec().createWithArray(self.u_tensor.numpy()) # convert to PETSc vec
         self.func = func
         self.step_size = step_size
         self.flat_params = _flatten(func.parameters())
@@ -176,25 +176,25 @@ class ODEPetsc(object):
         
         return solution.to(u0.device)
 
-    def _grid_constructor(self, t):
-        """Construct uniform time grid with step size self.step_size"""
-        start_time = t[0]
-        end_time = t[-1]
-        niters = torch.ceil((end_time - start_time) / self.step_size + 1).item()
-        t_infer = torch.arange(0, niters).to(t) * self.step_size + start_time
-        if t_infer[-1] > t[-1]:
-            t_infer[-1] = t[-1]
-        return t_infer
+    # def _grid_constructor(self, t):
+    #     """Construct uniform time grid with step size self.step_size"""
+    #     start_time = t[0]
+    #     end_time = t[-1]
+    #     niters = torch.ceil((end_time - start_time) / self.step_size + 1).item()
+    #     t_infer = torch.arange(0, niters).to(t) * self.step_size + start_time
+    #     if t_infer[-1] > t[-1]:
+    #         t_infer[-1] = t[-1]
+    #     return t_infer
     
-    def _linear_interp(self, t0, t1, u0, u1, tj):
-        """ Do linear interpolation if tj falls between t0 and t1 """
-        if tj == t0:
-            return u0
-        if tj == t1:
-            return u1
-        t0_, t1_, tj_ = t0.to(u0[0]), t1.to(u0[0]), tj.to(u0[0])
-        slope = torch.stack([(u1_ - u0_) / (t1_ - t0_) for u0_, u1_, in zip(u0, u1)])
-        return torch.stack([u0_ + slope_ * (tj_ - t0_) for u0_, slope_ in zip(u0, slope)  ])
+    # def _linear_interp(self, t0, t1, u0, u1, tj):
+    #     """ Do linear interpolation if tj falls between t0 and t1 """
+    #     if tj == t0:
+    #         return u0
+    #     if tj == t1:
+    #         return u1
+    #     t0_, t1_, tj_ = t0.to(u0[0]), t1.to(u0[0]), tj.to(u0[0])
+    #     slope = torch.stack([(u1_ - u0_) / (t1_ - t0_) for u0_, u1_, in zip(u0, u1)])
+    #     return torch.stack([u0_ + slope_ * (tj_ - t0_) for u0_, slope_ in zip(u0, slope)  ])
 
 
     def petsc_adjointsolve(self, t):
