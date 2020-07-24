@@ -173,7 +173,7 @@ class ODEBlock_NODE(nn.Module):
 
 class ODEBlock_PETSc(nn.Module):
 
-    def __init__(self, odefunc, input_size):
+    def __init__(self, odefunc, input_size, Train):
         super(ODEBlock_PETSc, self).__init__()
         self.odefunc = odefunc
         self.options = {}
@@ -191,11 +191,13 @@ class ODEBlock_PETSc(nn.Module):
 
         elif args.method == 'Dopri5_fixed':
             self.method = 'dopri5_fixed'
-        #if train:
-        #else:
+        
         self.ode = petsc_adjoint.ODEPetsc()
-        self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
-        self.input_size = (args.batch_size,1,1,1)
+        if Train:
+            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+        else:
+            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
+        
         self.integration_time = torch.tensor(  [0,1] ).float()
         
 
@@ -238,22 +240,28 @@ transform_test  = transforms.Compose([
 
 train_dataset = torchvision.datasets.CIFAR10(root='./data', transform = transform_train, train = True, download = True)
 test_dataset = torchvision.datasets.CIFAR10(root='./data', transform = transform_test, train = False, download = True)
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, num_workers = 4, shuffle = True)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = test_batch_size, num_workers = 4, shuffle = False)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, num_workers = 4, shuffle = True, drop_last=True)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size = test_batch_size, num_workers = 4, shuffle = False, drop_last=True)
 
 if args.impl == 'PETSc':
     ODEBlock = ODEBlock_PETSc#(train=True)
-    #ODEBlock_test = ODEBlock_PETSc#(train=False)
+    
 elif args.impl == 'ANODE':
     ODEBlock = ODEBlock_ANODE
-    #ODEBlock_test = ODEBlock
 else:
     ODEBlock = ODEBlock_NODE
-    #ODEBlock_test = ODEBlock
     
 
-if args.network == 'sqnxt':
+if args.network == 'sqnxt' and not args.impl == 'PETSc':
     net = SqNxt_23_1x(10, ODEBlock)
+    net_test = net
+elif args.network == 'sqnxt' and args.impl == 'PETSc':
+    net = SqNxt_23_1x(10, ODEBlock,Train=True)
+    net_test = SqNxt_23_1x(10, ODEBlock,Train=False)
+    net_test.load_state_dict(net.state_dict())
+
+    
+
     #net_test = SqNxt_23_1x(10, ODEBlock_test)
     
     #print(summary(net,torch.zeros((1,3,32,32))))
@@ -265,8 +273,8 @@ net.apply(conv_init)
 print(net)
 if is_use_cuda:
     net.to(device)
-    #net_test.to(device)
-    #net = nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
+    net_test.to(device)
+    
 criterion = nn.CrossEntropyLoss()
 
 def get_logger(logpath, filepath, package_files=[], displaying=True, saving=True, debug=False):
@@ -332,14 +340,15 @@ def train(epoch):
         
 def test(epoch):
     global best_acc
-    net.eval()
+    net_test.load_state_dict(net.state_dict())
+    net_test.eval()
     test_loss = 0
     correct = 0
     total = 0
     for idx, (inputs, labels) in enumerate(test_loader):
         if is_use_cuda:
             inputs, labels = inputs.to(device), labels.to(device)
-        outputs = net(inputs)
+        outputs = net_test(inputs)
         loss = criterion(outputs, labels)
         
         test_loss  += loss.item()
