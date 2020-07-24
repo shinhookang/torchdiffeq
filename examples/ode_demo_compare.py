@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 #sys.path.append('/home/zhaow/NODE')
 sys.path.append('/home/zhaow/torchdiffeq')
 parser = argparse.ArgumentParser('ODE demo')
-parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'adams','euler'], default='dopri5')
+parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','tsit5','bosh3'], default='dopri5')
 parser.add_argument('--step_size',type=eval, default=1)
 parser.add_argument('--data_size', type=int, default=101)
 parser.add_argument('--batch_time', type=int, default=10)
