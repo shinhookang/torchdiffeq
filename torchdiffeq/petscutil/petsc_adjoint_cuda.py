@@ -73,7 +73,7 @@ class ODEPetsc(object):
         """"Save the solutions at intermediate points"""
         dt = ts.getTimeStep()
         #print(dt)
-        if True:#abs(t-self.sol_times[self.cur_index]) < 1E-16:
+        if abs(t-self.sol_times[self.cur_index]) < 1E-6:
             unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
             self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
@@ -146,8 +146,8 @@ class ODEPetsc(object):
         U = PETSc.Vec().createWithArray(self.u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
         
-        #self.sol_times = t.to(u0[0].device, torch.float64)
-        self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
+        self.sol_times = t.to(u0[0].device, torch.float64)
+        #self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
         #print(self.sol_times)
         assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
         self.sol_times = self.sol_times.to(u0[0])
