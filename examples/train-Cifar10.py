@@ -56,8 +56,10 @@ sys.argv = [sys.argv[0]] + unknown
 import petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
-if args.network == 'sqnxt':
+if args.network == 'sqnxt' and not args.impl == 'PETSc':
     from models.sqnxt import SqNxt_23_1x, lr_schedule
+elif args.network == 'sqnxt' and args.impl == 'PETSc':
+    from models.sqnxt_PETSc import SqNxt_23_1x, lr_schedule
     #writer = SummaryWriter(args.network + '/' + args.method + '_lr_' + str(args.lr) + '_Nt_' + str(args.Nt) + '/')
 elif args.network == 'resnet':
     from models.resnet import ResNet18, lr_schedule
@@ -171,7 +173,7 @@ class ODEBlock_NODE(nn.Module):
 
 class ODEBlock_PETSc(nn.Module):
 
-    def __init__(self, odefunc):
+    def __init__(self, odefunc, input_size):
         super(ODEBlock_PETSc, self).__init__()
         self.odefunc = odefunc
         self.options = {}
@@ -191,14 +193,14 @@ class ODEBlock_PETSc(nn.Module):
             self.method = 'dopri5_fixed'
         #if train:
         #else:
-        #    self.ode.setupTS(torch.zeros(args.test_batch_size,3,32,32).to(device), self.odefunc.to(device), self.step_size, Method, enable_adjoint=False)
-       
+        self.ode = petsc_adjoint.ODEPetsc()
+        self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+        self.input_size = (args.batch_size,1,1,1)
         self.integration_time = torch.tensor(  [0,1] ).float()
         
 
     def forward(self, x):
-        self.ode = petsc_adjoint.ODEPetsc()
-        self.ode.setupTS(torch.zeros_like(x).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+        
         out = self.ode.odeint_adjoint(x, self.integration_time.type_as(x))
         return out[-1]
 
