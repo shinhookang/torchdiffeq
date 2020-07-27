@@ -47,10 +47,8 @@ device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 
 
 
 import torchdiffeq
-if torch.cuda.is_available:
-    from torchdiffeq.petscutil import petsc_adjoint_cuda as petsc_adjoint
-else:
-    from torchdiffeq.petscutil import petsc_adjoint_old as petsc_adjoint
+from torchdiffeq.petscutil import petsc_adjoint_cuda as petsc_adjoint
+
 
 if args.impl == 'NODE_adj':
     from torchdiffeq import odeint_adjoint as odeint

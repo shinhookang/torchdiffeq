@@ -42,8 +42,7 @@ torch.backends.cudnn.benchmark = False
 
 import torchdiffeq
 
-from torchdiffeq.petscutil import petsc_adjoint_old as petsc_adjoint
-#from petscutil import petsc_adjoint
+from torchdiffeq.petscutil import petsc_adjoint# as petsc_adjoint
 
 if args.adjoint:
     from torchdiffeq import odeint_adjoint as odeint
@@ -199,11 +198,15 @@ if __name__ == '__main__':
 #   end of NODE
 
 
-#    Petsc implementation
+#    PETSc implementation
     func_PETSC = copy.deepcopy(func_NODE)
     ode = petsc_adjoint.ODEPetsc()
-    ode.setupTS(torch.zeros(args.batch_size,1,1,2), func_PETSC, args.step_size, args.method, enable_adjoint=True)
+    ode.setupTS(torch.zeros(args.batch_size,1,1,2).to(device), func_PETSC.to(device), args.step_size, args.method, enable_adjoint=True)
     optimizer_PETSC = optim.RMSprop(func_PETSC.parameters(), lr=1e-3)
+#  PETSc model for test
+    ode0 = petsc_adjoint.ODEPetsc()
+    ode0.setupTS(true_y0.to(device), func_PETSC.to(device), step_size=args.step_size, method=args.method, enable_adjoint=False)
+                
 #   end of PETSC
     end = time.time()
 
@@ -227,13 +230,13 @@ if __name__ == '__main__':
 
         start_PETSC = end_NODE
         
-        pred_y_PETSC = ode.odeint_adjoint(batch_y0, batch_t)
-        pred_y_PETSC = torch.reshape(pred_y_PETSC, batch_y.shape)
+        pred_y_PETSC = ode.odeint_adjoint(batch_y0.to(device), batch_t.to(device))
+        #pred_y_PETSC = torch.reshape(pred_y_PETSC, batch_y.shape)
         nfe_f_PETSC = func_PETSC.nfe
         func_PETSC.nfe = 0
         
 
-        loss_PETSC = torch.mean(torch.abs(pred_y_PETSC - batch_y))
+        loss_PETSC = torch.mean(torch.abs(pred_y_PETSC.to(device) - batch_y.to(device)))
         end_PETSC = time.time()
 
         loss_NODE.backward()
@@ -274,10 +277,8 @@ if __name__ == '__main__':
                 print('NODE : Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_NODE-start_NODE, loss_NODE_array[-1],nfe_f_NODE, nfe_b_NODE))
                 #func_NODE.nfe=0
                 
-                ode0 = petsc_adjoint.ODEPetsc()
-                ode0.setupTS(true_y0, func_PETSC, step_size=args.step_size, method=args.method, enable_adjoint=False)
-                pred_y_PETSC = ode0.odeint_adjoint(true_y0, t)
-                loss_PETSc_array= loss_PETSc_array + [torch.mean(torch.abs(pred_y_PETSC - true_y))]
+                pred_y_PETSC = ode0.odeint_adjoint(true_y0.to(device), t.to(device))
+                loss_PETSc_array= loss_PETSc_array + [torch.mean(torch.abs(pred_y_PETSC.to(device) - true_y.to(device)))]
                 print('PETSC: Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_PETSC-start_PETSC, loss_PETSc_array[-1],nfe_f_PETSC, nfe_b_PETSC))
                 #func_PETSC.nfe=0
         #        print(torch.norm(pred_y_NODE - pred_y_PETSC))
