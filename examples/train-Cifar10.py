@@ -76,10 +76,8 @@ is_use_cuda = torch.cuda.is_available()
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
 import torchdiffeq
-#if is_use_cuda:
-from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
-#else:
-#from torchdiffeq.petscutil import petsc_adjoint_old as petsc_adjoint
+
+from torchdiffeq.petscutil import petsc_adjoint# as petsc_adjoint
 
 from anode import odesolver_adjoint as odesolver
 

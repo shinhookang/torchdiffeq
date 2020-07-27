@@ -47,7 +47,7 @@ device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 
 
 
 import torchdiffeq
-from torchdiffeq.petscutil import petsc_adjoint_cuda as petsc_adjoint
+from torchdiffeq.petscutil import petsc_adjoint
 
 
 if args.impl == 'NODE_adj':
@@ -550,10 +550,10 @@ if __name__ == '__main__':
         f_nfe_meter.update(nfe_forward)
         b_nfe_meter.update(nfe_backward)
         
-        if itr % batches_per_epoch == 1:
-            start = time.time()
-        if itr % batches_per_epoch == 0:
-            end = time.time()
+        # if itr % batches_per_epoch == 1:
+        #     start = time.time()
+        # if itr % batches_per_epoch == 0:
+        #     end = time.time()
         
       ############################################################################################
         if itr % batches_per_epoch == 0:
@@ -568,13 +568,14 @@ if __name__ == '__main__':
                     
               
                 
-                
+            end = time.time()    
             logger.info( " Epoch {:04d} | Time per epoch {:.3f} | NFE-F {:.1f} | NFE-B {:.1f} | "
                      "Train Acc {:.4f} | Test Acc {:.4f} | Train Loss {:.10f}".format(
                             itr // batches_per_epoch, end-start, f_nfe_meter.avg,
                             b_nfe_meter.avg, train_acc, val_acc, train_loss 
                         )
                     )
+            start = time.time()
                 
                 
                 
