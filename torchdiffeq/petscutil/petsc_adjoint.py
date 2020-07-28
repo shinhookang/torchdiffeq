@@ -304,6 +304,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
             for i in range(T-1, 0, -1):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i - 1]]))
                 adj_u_tensor += grad_output[0][i-1] # add forcing
-                ctx.ode.adj_u[0].setArray(adj_u_tensor.numpy()) # update PETSc work vectors
+                ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
 
         return (adj_u_tensor, None, adj_p_tensor, None)
