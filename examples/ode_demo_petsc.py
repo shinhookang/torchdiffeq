@@ -48,9 +48,9 @@ from torchdiffeq import petsc_adjoint
 
 device = torch.device('cuda:' + str(gpu) if torch.cuda.is_available() else 'cpu')
 
-true_y0 = torch.tensor([[2., 0.]])
+true_y0 = torch.tensor([[2., 0.]]).to(device)
 t = torch.linspace(0., 25., data_size)
-true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]])
+true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]]).to(device)
 
 class Lambda(nn.Module):
     def forward(self, t, y):
@@ -139,7 +139,7 @@ class ODEFunc(nn.Module):
             nn.Linear(2, 50),
             nn.Tanh(),
             nn.Linear(50, 2),
-        )
+        ).to(device)
 
         for m in self.net.modules():
             if isinstance(m, nn.Linear):
