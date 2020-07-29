@@ -77,7 +77,7 @@ device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 
 
 import torchdiffeq
 
-from torchdiffeq.petscutil import petsc_adjoint# as petsc_adjoint
+from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
 
 from anode import odesolver_adjoint as odesolver
 

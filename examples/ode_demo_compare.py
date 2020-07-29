@@ -79,9 +79,9 @@ with torch.no_grad():
     true_y = ode0.odeint_adjoint(true_y0,t)
     print(true_y)
     print(true_y2)
-    del ode0
+    
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
-    #exit()
+    
 
 
 def get_batch():
