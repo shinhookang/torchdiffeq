@@ -168,7 +168,7 @@ class ODEPetsc(object):
             self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
 
-    def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True, implicit_form=False):
+    def setupTS(self, u_tensor, func, step_size=0.01, method = 'beuler', enable_adjoint=True):
         self.cached_u_tensor = u_tensor
         self.n = u_tensor.numel()
         self.U = PETSc.Vec().createWithArray(u_tensor.numpy()) # convert to PETSc vec
@@ -179,31 +179,25 @@ class ODEPetsc(object):
         self.np = self.flat_params.numel()
 
         self.ts.reset()
-        self.ts.setType(PETSc.TS.Type.RK)
+        #print(dir(self.ts))
+        #exit()
+        self.ts.setType(PETSc.TS.Type.BEULER)
         self.ts.setEquationType(PETSc.TS.EquationType.ODE_EXPLICIT)
         self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
 
         F = self.U.duplicate()
-        if implicit_form :
-            self.ts.setIFunction(self.evalIFunction, F)
-        else :
-            self.ts.setRHSFunction(self.evalFunction, F)
-
+        self.ts.setIFunction(self.evalIFunction, F)
+        
         Jac = PETSc.Mat().create()
         Jac.setSizes([self.n, self.n])
         Jac.setType('python')
-        if implicit_form :
-            shell = IJacShell(self)
-        else :
-            shell = RHSJacShell(self)
+        shell = IJacShell(self)
         Jac.setPythonContext(shell)
         Jac.setUp()
         Jac.assemble()
-        if implicit_form :
-            self.ts.setIJacobian(self.evalIJacobian, Jac)
-        else :
-            self.ts.setRHSJacobian(self.evalJacobian, Jac)
 
+        self.ts.setIJacobian(self.evalIJacobian, Jac)
+        
         if enable_adjoint :
             Jacp = PETSc.Mat().create()
             Jacp.setSizes([self.n, self.np])
@@ -212,13 +206,9 @@ class ODEPetsc(object):
             Jacp.setPythonContext(shell)
             Jacp.setUp()
             Jacp.assemble()
-            if implicit_form :
-                self.ijacp = True
-                self.ts.setIJacobianP(self.evalIJacobianP, Jacp)
-            else :
-                self.ijacp = False
-                self.ts.setRHSJacobianP(self.evalJacobianP, Jacp)
-
+            self.ijacp = True
+            self.ts.setIJacobianP(self.evalIJacobianP, Jacp)
+            
             self.adj_u = []
             self.adj_u.append(PETSc.Vec().createSeq(self.n, comm=self.comm))
             self.adj_p = []
@@ -248,7 +238,7 @@ class ODEPetsc(object):
         ts.setStepNumber(0)
         ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
         ts.solve(U)
-        solution = torch.stack([self.sol_list[i] for i in range(len(self.sol_times))], dim=0)
+        solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_times))], dim=0)
         return solution
 
     def petsc_adjointsolve(self, t):
@@ -303,7 +293,7 @@ class OdeintAdjointMethod(torch.autograd.Function):
 
             for i in range(T-1, 0, -1):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i - 1]]))
-                adj_u_tensor += grad_output[0][i-1] # add forcing
+                adj_u_tensor += grad_output[0][i-1].cpu().reshape(adj_u_tensor.shape) # add forcing
                 ctx.ode.adj_u[0].setArray(adj_u_tensor.numpy()) # update PETSc work vectors
 
         return (adj_u_tensor, None, adj_p_tensor, None)
