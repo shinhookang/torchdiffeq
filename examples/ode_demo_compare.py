@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 #sys.path.append('/home/zhaow/NODE')
 sys.path.append('/home/zhaow/torchdiffeq')
 parser = argparse.ArgumentParser('ODE demo')
-parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','tsit5','bosh3'], default='dopri5')
+parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','tsit5','bosh3'], default='euler')
 parser.add_argument('--step_size',type=eval, default=1)
 parser.add_argument('--data_size', type=int, default=101)
 parser.add_argument('--batch_time', type=int, default=10)
@@ -45,6 +45,7 @@ import torchdiffeq
 
 if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_test as petsc_adjoint
+    print('implicit')
 else:
     from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
 
@@ -75,7 +76,9 @@ with torch.no_grad():
     true_y2 = odeint(Lambda(), true_y0, t, method=args.method, options=options_true)
 
     ode0 = petsc_adjoint.ODEPetsc()
+    print('11111')
     ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False)
+    print('1111')
     true_y = ode0.odeint_adjoint(true_y0,t)
     print(true_y)
     print(true_y2)

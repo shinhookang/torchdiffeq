@@ -169,6 +169,7 @@ class ODEPetsc(object):
             self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, method = 'beuler', enable_adjoint=True):
+        print('1111111111')
         self.cached_u_tensor = u_tensor
         self.n = u_tensor.numel()
         self.U = PETSc.Vec().createWithArray(u_tensor.numpy()) # convert to PETSc vec
