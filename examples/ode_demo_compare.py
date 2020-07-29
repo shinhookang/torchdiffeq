@@ -27,6 +27,7 @@ parser.add_argument('--test_freq', type=int, default=20)
 parser.add_argument('--viz', action='store_true')
 parser.add_argument('--gpu', type=int, default=1)
 parser.add_argument('--adjoint', action='store_true')
+parser.add_argument('--implicit', type=bool, default=False)
 args, unknown = parser.parse_known_args()
 
 import petsc4py
@@ -42,7 +43,10 @@ torch.backends.cudnn.benchmark = False
 
 import torchdiffeq
 
-from torchdiffeq.petscutil import petsc_adjoint# as petsc_adjoint
+if args.implicit:
+    from torchdiffeq.petscutil import petsc_adjoint_test as petsc_adjoint
+else:
+    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
 
 if args.adjoint:
     from torchdiffeq import odeint_adjoint as odeint
