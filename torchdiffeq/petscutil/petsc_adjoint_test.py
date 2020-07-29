@@ -4,52 +4,52 @@ from .._impl.misc import _flatten, _flatten_convert_none_to_zeros
 import petsc4py
 from petsc4py import PETSc
 
-class RHSJacShell:
-    def __init__(self, ode):
-        self.ode_ = ode
+# class RHSJacShell:
+#     def __init__(self, ode):
+#         self.ode_ = ode
 
-    def mult(self, A, X, Y):
-        """The Jacobian is A = shift*I - dFdU"""
-        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor)
-        y = Y.array
-        with torch.set_grad_enabled(True):
-            self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
-            func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
-            # grad_outputs = torch.zeros_like(func_eval, requires_grad=True)
-            # vjp_u = torch.autograd.grad(
-            #     func_eval, self.ode_.cached_u_tensor, grad_outputs,
-            #     allow_unused=True, create_graph=True
-            # )
-            # jvp_u = torch.autograd.grad(
-            #     vjp_u[0], grad_outputs, self.x_tensor,
-            #     allow_unused=True
-            # )
-            self.x_tensor = self.x_tensor.detach().requires_grad_(True)
-            vjp_u = torch.autograd.grad(
-                func_eval, self.ode_.cached_u_tensor, self.x_tensor,
-                allow_unused=True, create_graph=True
-            )
-            jvp_u = torch.autograd.grad(
-                vjp_u[0], self.x_tensor, self.x_tensor,
-                allow_unused=True
-            )
-        if jvp_u[0] is None: jvp_u[0] = torch.zeros_like(y)
-        y[:] = jvp_u[0].numpy().flatten()
+#     def mult(self, A, X, Y):
+#         """The Jacobian is A = shift*I - dFdU"""
+#         self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor)
+#         y = Y.array
+#         with torch.set_grad_enabled(True):
+#             self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
+#             func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
+#             # grad_outputs = torch.zeros_like(func_eval, requires_grad=True)
+#             # vjp_u = torch.autograd.grad(
+#             #     func_eval, self.ode_.cached_u_tensor, grad_outputs,
+#             #     allow_unused=True, create_graph=True
+#             # )
+#             # jvp_u = torch.autograd.grad(
+#             #     vjp_u[0], grad_outputs, self.x_tensor,
+#             #     allow_unused=True
+#             # )
+#             self.x_tensor = self.x_tensor.detach().requires_grad_(True)
+#             vjp_u = torch.autograd.grad(
+#                 func_eval, self.ode_.cached_u_tensor, self.x_tensor,
+#                 allow_unused=True, create_graph=True
+#             )
+#             jvp_u = torch.autograd.grad(
+#                 vjp_u[0], self.x_tensor, self.x_tensor,
+#                 allow_unused=True
+#             )
+#         if jvp_u[0] is None: jvp_u[0] = torch.zeros_like(y)
+#         y[:] = jvp_u[0].numpy().flatten()
 
-    def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor)
-        y = Y.array
-        with torch.set_grad_enabled(True):
-            self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
-            func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
-            vjp_u = torch.autograd.grad(
-               func_eval, self.ode_.cached_u_tensor,
-               self.x_tensor, allow_unused=True, retain_graph=True
-            )
-        # autograd.grad returns None if no gradient, set to zero.
-        # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
-        if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
-        y[:] = vjp_u[0].numpy().flatten()
+#     def multTranspose(self, A, X, Y):
+#         self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor)
+#         y = Y.array
+#         with torch.set_grad_enabled(True):
+#             self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
+#             func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
+#             vjp_u = torch.autograd.grad(
+#                func_eval, self.ode_.cached_u_tensor,
+#                self.x_tensor, allow_unused=True, retain_graph=True
+#             )
+#         # autograd.grad returns None if no gradient, set to zero.
+#         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
+#         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
+#         y[:] = vjp_u[0].numpy().flatten()
 
 class IJacShell:
     def __init__(self, ode):
@@ -169,10 +169,10 @@ class ODEPetsc(object):
             self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, method = 'beuler', enable_adjoint=True):
-        print('1111111111')
         self.cached_u_tensor = u_tensor
         self.n = u_tensor.numel()
-        self.U = PETSc.Vec().createWithArray(u_tensor.numpy()) # convert to PETSc vec
+        self.device = u_tensor.device
+        self.U = PETSc.Vec().createWithArray(u_tensor.cpu().numpy()) # convert to PETSc vec
 
         self.func = func
         self.step_size = step_size
@@ -229,7 +229,7 @@ class ODEPetsc(object):
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
         # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
-        U = PETSc.Vec().createWithArray(u0.numpy()) # convert to PETSc vec
+        U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
         self.sol_times = t.to(u0[0].device, torch.float64)
         self.sol_list = []
