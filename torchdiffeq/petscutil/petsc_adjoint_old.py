@@ -10,16 +10,16 @@ class JacShell:
         self.ode_ = ode
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor).to(self.ode_.device)
+        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
         y = Y.array
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
-            self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
-            # u_tensor = self.ode_.cached_u_tensor.to(self.ode_.device)
-            self.ode_.func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
+            self.ode_.u_tensor = self.ode_.u_tensor.detach().requires_grad_(True)
+            u_tensor = self.ode_.u_tensor.to(self.ode_.device)
+            self.ode_.func_eval = self.ode_.func(self.ode_.t, u_tensor)
             vjp_u = torch.autograd.grad(
-                self.ode_.func_eval, self.ode_.cached_u_tensor,
-                self.x_tensor, allow_unused=True, retain_graph=True
+                self.ode_.func_eval, u_tensor,
+                self.x_tensor.to(self.ode_.device), allow_unused=True, retain_graph=True
             )
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
@@ -31,16 +31,16 @@ class JacPShell:
         self.ode_ = ode
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor).to(self.ode_.device)
+        self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.u_tensor.size())).type(torch.FloatTensor)
         y = Y.array
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
-            # t = t.to(self.cached_u_tensor.device).detach().requires_grad_(False)
-            # u_tensor = self.ode_.cached_u_tensor.to(self.ode_.device)
+            # t = t.to(self.u_tensor.device).detach().requires_grad_(False)
+            u_tensor = self.ode_.u_tensor.to(self.ode_.device)
             func_eval = self.ode_.func_eval#self.ode_.func(self.ode_.t, u_tensor)
             vjp_params = torch.autograd.grad(
                 func_eval, f_params,
-                self.x_tensor, allow_unused=True, retain_graph=True
+                self.x_tensor.to(self.ode_.device), allow_unused=True, retain_graph=True
             )
         # autograd.grad returns None if no gradient, set to zero.
         vjp_params = _flatten_convert_none_to_zeros(vjp_params, f_params)
@@ -55,34 +55,34 @@ class ODEPetsc(object):
 
     def evalFunction(self, ts, t, U, F):
         f = F.array
-        self.cached_u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device)
-        dudt = self.func(t, self.cached_u_tensor).cpu().detach().numpy()
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        dudt = self.func(t, self.u_tensor.to(self.device)).cpu().detach().numpy()
         f[:] = dudt.flatten()
 
     def evalJacobian(self, ts, t, U, Jac, JacPre):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.cached_u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
     def evalJacobianP(self, ts, t, U, Jacp):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.cached_u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device)
+        self.u_tensor = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
 
     def saveSolution(self, ts, stepno, t, U):
         """"Save the solutions at intermediate points"""
         dt = ts.getTimeStep()
         #print(dt)
         if abs(t-self.sol_times[self.cur_index]) < 1E-6:
-            unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device)
+            unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.u_tensor.size())).type(torch.FloatTensor)
             self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, method='dopri5_fixed', enable_adjoint=True):
         self.device = u_tensor.device
-        self.cached_u_tensor = u_tensor
+        self.u_tensor = u_tensor.clone().cpu()
         self.n = u_tensor.numel()
-        self.U = PETSc.Vec().createWithArray(u_tensor.cpu().numpy()) # convert to PETSc vec
+        self.U = PETSc.Vec().createWithArray(self.u_tensor.numpy()) # convert to PETSc vec
         self.func = func
         self.step_size = step_size
         self.flat_params = _flatten(func.parameters())
@@ -141,12 +141,12 @@ class ODEPetsc(object):
 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
-        #self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
+        self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         U = self.U
-        U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
+        U = PETSc.Vec().createWithArray(self.u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
         
-        self.sol_times = t.to(self.device, torch.float64)
+        self.sol_times = t.to(u0[0].device, torch.float64)
         #self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
         #print(self.sol_times)
         assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
@@ -174,7 +174,7 @@ class ODEPetsc(object):
         #print(sol_interp.shape)
         #print(len(t))
         
-        return solution
+        return solution.to(u0.device)
 
     # def _grid_constructor(self, t):
     #     """Construct uniform time grid with step size self.step_size"""
@@ -198,15 +198,15 @@ class ODEPetsc(object):
 
 
     def petsc_adjointsolve(self, t):
-        t = t.to(self.device, torch.float64)
+        t = t.to(self.u_tensor.device, torch.float64)
         ts = self.ts
         dt = ts.getTimeStep()
         # print('do {} adjoint steps'.format(round(((t[1]-t[0])/dt).abs().item())))
         ts.adjointSetSteps(round(((t[1]-t[0])/dt).abs().item()))
         ts.adjointSolve()
         adj_u, adj_p = ts.getCostGradients()
-        adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device)
-        adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(torch.FloatTensor).to(self.device)
+        adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.u_tensor.size())).type(torch.FloatTensor)
+        adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(torch.FloatTensor)
         return adj_u_tensor, adj_p_tensor
 
     def odeint_adjoint(self, y0, t):
@@ -251,7 +251,7 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i - 1]]))
                 #print(adj_u_tensor.shape)
                 #print(grad_output[0][i-1].shape)
-                adj_u_tensor += grad_output[0][i-1].reshape(adj_u_tensor.shape) # add forcing
+                adj_u_tensor += grad_output[0][i-1].cpu().reshape(adj_u_tensor.shape) # add forcing
                 ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
 
-        return (adj_u_tensor, None, adj_p_tensor, None)
+        return (adj_u_tensor.to(grad_output[0].device), None, adj_p_tensor.to(grad_output[0].device), None)

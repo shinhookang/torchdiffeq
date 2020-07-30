@@ -44,10 +44,11 @@ torch.backends.cudnn.benchmark = False
 import torchdiffeq
 
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_test as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
     print('implicit')
 else:
     from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    print('explicit')
 
 if args.adjoint:
     from torchdiffeq import odeint_adjoint as odeint
@@ -76,9 +77,9 @@ with torch.no_grad():
     true_y2 = odeint(Lambda(), true_y0, t, method=args.method, options=options_true)
 
     ode0 = petsc_adjoint.ODEPetsc()
-    print('11111')
+
     ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False)
-    print('1111')
+
     true_y = ode0.odeint_adjoint(true_y0,t)
     print(true_y)
     print(true_y2)
