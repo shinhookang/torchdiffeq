@@ -17,12 +17,12 @@ import matplotlib.pyplot as plt
 #sys.path.append('/home/zhaow/NODE')
 sys.path.append('/home/zhaow/torchdiffeq')
 parser = argparse.ArgumentParser('ODE demo')
-parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','tsit5','bosh3'], default='euler')
+parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','midpoint','bosh3'], default='euler')
 parser.add_argument('--step_size',type=eval, default=1)
 parser.add_argument('--data_size', type=int, default=101)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
-parser.add_argument('--niters', type=int, default=2000)
+parser.add_argument('--niters', type=int, default=1000)
 parser.add_argument('--test_freq', type=int, default=20)
 parser.add_argument('--viz', action='store_true')
 parser.add_argument('--gpu', type=int, default=1)
@@ -57,16 +57,21 @@ else:
 
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
-true_y0 = torch.tensor([[2., 0.]])
-t = torch.linspace(0., 25., args.data_size)
-true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]])
+true_y0 = torch.tensor([[2., 0.]],dtype=torch.float64)
+print(true_y0.dtype)
+t = torch.linspace(0., 25., args.data_size).double()
+print(t.dtype)
+true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]],dtype=torch.float64)
+#true_A = np.array([[-0.1, 2.0], [-2.0, -0.1]],dtype=np.float64)
 options = {}
 options.update({'step_size':args.step_size})
 
 class Lambda(nn.Module):
 
     def forward(self, t, y):
-        return torch.mm(y**3, true_A)
+        ycub = y**3
+        out = torch.mm(ycub, true_A)
+        return out
 
 
 with torch.no_grad():
@@ -85,7 +90,7 @@ with torch.no_grad():
     print(true_y2)
     
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
-    
+    exit()
 
 
 def get_batch():
@@ -162,9 +167,9 @@ class ODEFunc(nn.Module):
         super(ODEFunc, self).__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(2, 50),
-            nn.Tanh(),
-            nn.Linear(50, 2),
+            nn.Linear(2, 50).double(),
+            nn.Tanh().double(),
+            nn.Linear(50, 2).double(),
         )
         self.nfe = 0
         for m in self.net.modules():
@@ -175,7 +180,7 @@ class ODEFunc(nn.Module):
 
     def forward(self, t, y):
         self.nfe = self.nfe + 1
-        return self.net(y**3)
+        return self.net(y.double()**3)
 
 
 class RunningAverageMeter(object):
@@ -299,4 +304,5 @@ if __name__ == '__main__':
     plt.plot(loss_NODE_array, 'o',label='NODE test loss')
     plt.plot(loss_PETSc_array, '*',label='PETSc test loss')
     plt.legend()
-    plt.savefig('loss.png')
+    title = 'loss_'+args.method+str(args.adjoint)+'.png'
+    plt.savefig(title)
