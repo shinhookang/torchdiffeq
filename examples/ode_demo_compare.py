@@ -175,7 +175,6 @@ class ODEFunc(nn.Module):
         self.nfe = 0
         for m in self.net.modules():
             if isinstance(m, nn.Linear):
-                #nn.init.constant_(m.weight, val=0.1)
                 nn.init.normal_(m.weight, mean=0, std=0.1)
                 nn.init.constant_(m.bias, val=0)
 
