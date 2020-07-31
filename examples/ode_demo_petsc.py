@@ -26,6 +26,7 @@ parser.add_argument('--viz', action='store_true')
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--step_size', type=float, default=0.025)
 parser.add_argument('--implicit_form', action='store_true')
+parser.add_argument('--double_prec', action='store_true')
 args, unknown = parser.parse_known_args()
 
 gpu = args.gpu
@@ -36,7 +37,7 @@ batch_time = args.batch_time
 batch_size = args.batch_size
 step_size = args.step_size
 implicit_form = args.implicit_form
-
+double_prec = args.double_prec
 import petsc4py
 sys.argv = [sys.argv[0]] + unknown
 petsc4py.init(sys.argv)
@@ -44,17 +45,30 @@ from petsc4py import PETSc
 # OptDB = PETSc.Options()
 # print("first init: ",OptDB.getAll())
 
+sys.path.append("../") # for quick debugging
 from torchdiffeq import petsc_adjoint
 
 device = torch.device('cuda:' + str(gpu) if torch.cuda.is_available() else 'cpu')
 
-true_y0 = torch.tensor([[2., 0.]]).to(device)
-t = torch.linspace(0., 25., data_size)
-true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]]).to(device)
+if double_prec:
+    print('Using float64')
+    true_y0 = torch.tensor([[2., 0.]], dtype=torch.float64).to(device)
+    t = torch.linspace(0., 25., data_size, dtype=torch.float64)
+    true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]], dtype=torch.float64).to(device)
+else:
+    print('Using float32 (PyTorch default)')
+    true_y0 = torch.tensor([[2., 0.]] ).to(device)
+    t = torch.linspace(0., 25., data_size)
+    true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]]).to(device)
 
 class Lambda(nn.Module):
     def forward(self, t, y):
         return torch.mm(y**3, true_A)
+
+# data_size-1 should not exceed the number of time steps
+if step_size > 25.0/(data_size-1) :
+    print('Error: step_size={} too large (number of steps should not be smaller than data_size={} too large'.format(step_size,data_size))
+    sys.exit()
 
 ode0 = petsc_adjoint.ODEPetsc()
 ode0.setupTS(true_y0, Lambda(), step_size=step_size, enable_adjoint=False, implicit_form=implicit_form)
@@ -62,9 +76,7 @@ ode0.setupTS(true_y0, Lambda(), step_size=step_size, enable_adjoint=False, impli
 with torch.no_grad():
     true_y = ode0.odeint(true_y0, t)
     print(true_y)
-    # import sys
     # sys.exit()
-
 
 def get_batch():
     s = torch.from_numpy(np.random.choice(np.arange(data_size - batch_time, dtype=np.int64), batch_size, replace=False))
@@ -85,7 +97,6 @@ if args.viz:
     ax_phase = fig.add_subplot(132, frameon=False)
     ax_vecfield = fig.add_subplot(133, frameon=False)
     plt.show(block=False)
-
 
 def visualize(true_y, pred_y, odefunc, itr):
 
@@ -135,11 +146,18 @@ class ODEFunc(nn.Module):
     def __init__(self):
         super(ODEFunc, self).__init__()
 
-        self.net = nn.Sequential(
-            nn.Linear(2, 50),
-            nn.Tanh(),
-            nn.Linear(50, 2),
-        ).to(device)
+        if double_prec:
+            self.net = nn.Sequential(
+                nn.Linear(2, 50).double(),
+                nn.Tanh().double(),
+                nn.Linear(50, 2).double(),
+            ).to(device)
+        else:
+            self.net = nn.Sequential(
+                nn.Linear(2, 50),
+                nn.Tanh(),
+                nn.Linear(50, 2),
+            ).to(device)
 
         for m in self.net.modules():
             if isinstance(m, nn.Linear):
