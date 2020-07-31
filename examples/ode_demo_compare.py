@@ -84,7 +84,7 @@ with torch.no_grad():
 
     ode0 = petsc_adjoint.ODEPetsc()
 
-    ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False)
+    ode0.setupTS(true_y0, Lambda(), step_size=0.01*args.step_size, method=args.method, enable_adjoint=False)
 
     true_y = ode0.odeint_adjoint(true_y0,t)
     print(true_y)
@@ -181,7 +181,7 @@ class ODEFunc(nn.Module):
 
     def forward(self, t, y):
         self.nfe = self.nfe + 1
-        return self.net(y.double()**3)
+        return self.net(y)
 
 
 class RunningAverageMeter(object):
@@ -302,8 +302,8 @@ if __name__ == '__main__':
                 
         end = time.time()
     print(loss_NODE_array)
-    plt.plot(loss_NODE_array, 'o',label='NODE test loss')
-    plt.plot(loss_PETSc_array, '*',label='PETSc test loss')
+    plt.plot(loss_NODE_array, 'o',label='NODE test loss, Dopri5, dt=2.5')
+    plt.plot(loss_PETSc_array, '*',label='PETSc test loss, CN, dt=2.5')
     plt.legend()
     title = 'loss_'+args.method+str(args.adjoint)+'.png'
     plt.savefig(title)
