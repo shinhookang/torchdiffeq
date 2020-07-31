@@ -71,6 +71,7 @@ class Lambda(nn.Module):
     def forward(self, t, y):
         ycub = y**3
         out = torch.mm(ycub, true_A)
+        #print(out)
         return out
 
 
@@ -90,7 +91,7 @@ with torch.no_grad():
     print(true_y2)
     
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
-    exit()
+    #exit()
 
 
 def get_batch():

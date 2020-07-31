@@ -84,26 +84,26 @@ class ODEPetsc(object):
 
     def evalFunction(self, ts, t, U, F):
         f = F.array
-        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64)
+        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
         dudt = self.func(t, u_tensor).cpu().detach().numpy()
         f[:] = dudt.flatten()
 
     def evalIFunction(self, ts, t, U, Udot, F):
         f = F.array
-        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64)
+        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
         dudt = self.func(t, u_tensor).cpu().detach().numpy()
         f[:] = Udot.array - dudt.flatten()
 
     def evalJacobian(self, ts, t, U, Jac, JacPre):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64)
+        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
 
     def evalIJacobian(self, ts, t, U, Udot, shift, Jac, JacPre):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
         self.shift = shift
-        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64)
+        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
 
     def evalJacobianP(self, ts, t, U, Jacp):
         """Cache t and U for matrix-free Jacobian """
