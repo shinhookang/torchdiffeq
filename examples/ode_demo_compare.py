@@ -10,7 +10,7 @@ import sys
 import copy
 import matplotlib.pyplot as plt
 
-sys.path.append('/home/zhaow/torchdiffeq')
+sys.path.append("../")
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','midpoint','bosh3'], default='euler')
 parser.add_argument('--step_size',type=float, default=0.025)

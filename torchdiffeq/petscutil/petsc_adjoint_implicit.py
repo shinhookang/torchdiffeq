@@ -120,7 +120,7 @@ class ODEPetsc(object):
         dt = ts.getTimeStep()
         if abs(t-self.sol_times[self.cur_index]) < dt/5:#1e-6:
             unew = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
-            self.sol_list.append(unew.clone())
+            self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, method='cn', enable_adjoint=True):
