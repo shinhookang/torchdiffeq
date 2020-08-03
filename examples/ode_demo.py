@@ -8,14 +8,14 @@ import torch.nn as nn
 import torch.optim as optim
 
 parser = argparse.ArgumentParser('ODE demo')
-parser.add_argument('--method', type=str, choices=['dopri5', 'adams', 'rk4'], default='dopri5')
+parser.add_argument('--method', type=str, choices=['dopri5', 'adams', 'rk4', 'midpoint'], default='dopri5')
 parser.add_argument('--data_size', type=int, default=1001)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
 parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--test_freq', type=int, default=20)
 parser.add_argument('--viz', action='store_true')
-parser.add_argument('--gpu', type=int, default=0)
+parser.add_argument('--gpu', type=int, default=1)
 parser.add_argument('--adjoint', action='store_true')
 parser.add_argument('--step_size', type=float, default=0.025)
 args = parser.parse_args()
@@ -165,7 +165,7 @@ if __name__ == '__main__':
 
     ii = 0
 
-    func = ODEFunc()
+    func = ODEFunc().to(device)
     optimizer = optim.RMSprop(func.parameters(), lr=1e-3)
     end = time.time()
 
@@ -175,8 +175,8 @@ if __name__ == '__main__':
     for itr in range(1, args.niters + 1):
         optimizer.zero_grad()
         batch_y0, batch_t, batch_y = get_batch()
-        pred_y = odeint(func, batch_y0, batch_t)
-        loss = torch.mean(torch.abs(pred_y - batch_y))
+        pred_y = odeint(func, batch_y0.to(device), batch_t.to(device))
+        loss = torch.mean(torch.abs(pred_y.to(device) - batch_y.to(device)))
         loss.backward()
         optimizer.step()
 
@@ -185,8 +185,8 @@ if __name__ == '__main__':
 
         if itr % args.test_freq == 0:
             with torch.no_grad():
-                pred_y = odeint(func, true_y0, t)
-                loss = torch.mean(torch.abs(pred_y - true_y))
+                pred_y = odeint(func, true_y0.to(device), t.to(device))
+                loss = torch.mean(torch.abs(pred_y.to(device) - true_y.to(device)))
                 print('Iter {:04d} | Total Loss {:.6f}'.format(itr, loss.item()))
                 visualize(true_y, pred_y, func, ii)
                 ii += 1

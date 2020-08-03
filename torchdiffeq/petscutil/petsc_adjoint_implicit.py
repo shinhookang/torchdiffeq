@@ -11,7 +11,7 @@ class IJacShell:
     
     def mult(self, A, X, Y):
         """The Jacobian is A = shift*I - dFdU"""
-        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor).to(self.ode_.device,torch.float64)
+        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
         y = Y.array
         with torch.set_grad_enabled(True):
             self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
@@ -39,7 +39,7 @@ class IJacShell:
         y[:] = self.ode_.shift*X.array - jvp_u[0].cpu().numpy().flatten()
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor).to(self.ode_.device,torch.float64)
+        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
         y = Y.array
         with torch.set_grad_enabled(True):
             self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
@@ -58,7 +58,7 @@ class JacPShell:
         self.ode_ = ode
 
     def multTranspose(self, A, X, Y):
-        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(torch.FloatTensor).to(self.ode_.device,torch.float64)
+        self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
         y = Y.array
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
@@ -84,47 +84,49 @@ class ODEPetsc(object):
 
     def evalFunction(self, ts, t, U, F):
         f = F.array
-        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
+        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
         dudt = self.func(t, u_tensor).cpu().detach().numpy()
         f[:] = dudt.flatten()
 
     def evalIFunction(self, ts, t, U, Udot, F):
         f = F.array
-        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
+        u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
         dudt = self.func(t, u_tensor).cpu().detach().numpy()
         f[:] = Udot.array - dudt.flatten()
 
     def evalJacobian(self, ts, t, U, Jac, JacPre):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
+        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
     def evalIJacobian(self, ts, t, U, Udot, shift, Jac, JacPre):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
         self.shift = shift
-        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.DoubleTensor).to(self.device,torch.float64)
+        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
     def evalJacobianP(self, ts, t, U, Jacp):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64)
+        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
     def evalIJacobianP(self, ts, t, U, Udot, shift, Jacp):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
-        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64)
+        self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
     def saveSolution(self, ts, stepno, t, U):
         """"Save the solutions at intermediate points"""
-        if abs(t-self.sol_times[self.cur_index]) < 1e-6:
-            unew = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64)
-            self.sol_list.append(unew)
+        dt = ts.getTimeStep()
+        if abs(t-self.sol_times[self.cur_index]) < dt/5:#1e-6:
+            unew = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
+            self.sol_list.append(unew.clone())
             self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, method='cn', enable_adjoint=True):
         self.device = u_tensor.device
         self.cached_u_tensor = u_tensor
+        self.tensor_type = u_tensor.dtype
         self.n = u_tensor.numel()
         self.U = PETSc.Vec().createWithArray(u_tensor.cpu().numpy()) # convert to PETSc vec
 
@@ -134,7 +136,7 @@ class ODEPetsc(object):
         self.np = self.flat_params.numel()
 
         self.ts.reset()
-        if method=='beuler':
+        if method=='beuler' or method=='euler':
             self.ts.setType(PETSc.TS.Type.BE)
         else:
             self.ts.setType(PETSc.TS.Type.CN)
@@ -197,7 +199,9 @@ class ODEPetsc(object):
         # print(self.step_size)
         ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
         ts.solve(U)
+        
         solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_times))], dim=0)
+        
         return solution
 
     def petsc_adjointsolve(self, t):
@@ -210,8 +214,8 @@ class ODEPetsc(object):
         ts.adjointSetSteps(round(((t[1]-t[0])/dt).abs().item()))
         ts.adjointSolve()
         adj_u, adj_p = ts.getCostGradients()
-        adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device,torch.float64).double()
-        adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(torch.FloatTensor).to(self.device,torch.float64).double()
+        adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(torch.FloatTensor).to(self.device)
+        adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(torch.FloatTensor).to(self.device)
         return adj_u_tensor, adj_p_tensor
 
     def odeint_adjoint(self, y0, t):
