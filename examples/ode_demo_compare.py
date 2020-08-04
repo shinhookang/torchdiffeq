@@ -164,18 +164,12 @@ class ODEFunc(nn.Module):
     def __init__(self):
         super(ODEFunc, self).__init__()
 
-        if args.double_prec:
-            self.net = nn.Sequential(
-                nn.Linear(2, 50).double(),
-                nn.Tanh().double(),
-                nn.Linear(50, 2).double(),
-            ).to(device)
-        else:
-            self.net = nn.Sequential(
-                nn.Linear(2, 50),
-                nn.Tanh(),
-                nn.Linear(50, 2),
-            ).to(device)
+        
+        self.net = nn.Sequential(
+            nn.Linear(2, 50),
+            nn.Tanh(),
+            nn.Linear(50, 2),
+        )
 
         for m in self.net.modules():
             if isinstance(m, nn.Linear):
@@ -213,6 +207,8 @@ if __name__ == '__main__':
     
 #    NODE implementation 
     func_NODE = ODEFunc().to(device)
+    if args.double_prec:
+        func_NODE = func_NODE.double()
     optimizer_NODE = optim.RMSprop(func_NODE.parameters(), lr=1e-3)
 #   end of NODE
 

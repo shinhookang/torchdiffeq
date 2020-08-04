@@ -36,6 +36,8 @@ parser.add_argument('--breakpoint', type=eval, default=False, choices=[True, Fal
 parser.add_argument('--gpu', type=int, default=1)
 parser.add_argument('--Nt',type=int, default = 1)
 parser.add_argument('--impl',type=str, default='ANODE', choices = ['NODE','ANODE','NODE_adj','PETSc'])
+parser.add_argument('--implicit', action='store_true')
+parser.add_argument('--double_prec', action='store_true')
 args, unknown = parser.parse_known_args()
 sys.argv = [sys.argv[0]] + unknown
 import petsc4py
@@ -44,10 +46,15 @@ from petsc4py import PETSc
 sys.path.append('/home/zhaow/torchdiffeq')
 sys.path.append('/home/zhaow/anode')
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
-
+tensor_type = torch.float32
+if args.double_prec:
+    tensor_type = torch.float64
 
 import torchdiffeq
-from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
+if args.implicit:
+    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
+else:
+    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
 
 
 if args.impl == 'NODE_adj':
@@ -239,10 +246,11 @@ class ODEBlock_PETSc(nn.Module):
         
         self.integration_time = torch.tensor(  [0,1] ).float()
         self.train = train
+        
         if self.train:
-            self.ode.setupTS(torch.zeros(args.batch_size,64,6,6).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+            self.ode.setupTS(torch.zeros(args.batch_size,64,6,6).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
         else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,64,6,6).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
+            self.ode.setupTS(torch.zeros(args.test_batch_size,64,6,6).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
        
 
     def forward(self, x):
@@ -319,7 +327,6 @@ def get_mnist_loaders(data_aug=False, batch_size=128, test_batch_size=1000, perc
         datasets.MNIST(root='.data/mnist', train=False, download=True, transform=transform_test),
         batch_size=test_batch_size, shuffle=False, num_workers=2, drop_last=True
     )
-
     return train_loader, test_loader, train_eval_loader
 
 
@@ -357,7 +364,7 @@ def accuracy(model, dataset_loader):
     
     total_correct = 0
     for x, y in dataset_loader:
-        x = x.to(device)
+        x = x.to(device,tensor_type)
         y = one_hot(np.array(y.numpy()), 10)
 
         target_class = np.argmax(y, axis=1)
@@ -455,6 +462,9 @@ if __name__ == '__main__':
     #model_test = model
     model_test = nn.Sequential(*downsampling_layers, *feature_layers_test, *fc_layers).to(device)
     
+    if args.double_prec:
+        model = model.double()
+        model_test = model_test.double()
     logger.info(model)
     logger.info('Number of parameters: {}'.format(count_parameters(model)))
     
@@ -464,14 +474,14 @@ if __name__ == '__main__':
     print(count_parameters(nn.Sequential(*downsampling_layers)))
     #import pdb; pdb.set_trace()
 
-    criterion = nn.CrossEntropyLoss().to(device)
+    criterion = nn.CrossEntropyLoss().to(device,tensor_type)
 
     
     
     train_loader, test_loader, train_eval_loader = get_mnist_loaders(
         args.data_aug, args.batch_size, args.test_batch_size
     )
-
+    
     data_gen = inf_generator(train_loader)
     batches_per_epoch = len(train_loader)
 
@@ -499,7 +509,7 @@ if __name__ == '__main__':
     end = time.time()
     for itr in range(args.nepochs * batches_per_epoch):
         x, y = data_gen.__next__()
-        x = x.to(device)
+        x = x.to(device,tensor_type)
         y = y.to(device)
         
        
@@ -516,7 +526,7 @@ if __name__ == '__main__':
             #if itr % batches_per_epoch == 0:
             #    gpu_tracker.track()
         logits = model(x)
-        
+        print(logits.dtype)
         loss = criterion(logits, y)
         #print(loss.item())
         #exit()
