@@ -73,8 +73,9 @@ class ODEPetsc(object):
     def saveSolution(self, ts, stepno, t, U):
         """"Save the solutions at intermediate points"""
         dt = ts.getTimeStep()
-        #print(dt)
-        if abs(t-self.sol_times[self.cur_index]) < dt/5:#1E-6:
+        #print(t)
+        if abs(t-self.sol_times[self.cur_index]) < dt/10:#1E-6:
+            #print(ts.getTimeStep())
             unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
             #print(unew[0])
             #print(self.sol_list)
@@ -163,7 +164,7 @@ class ODEPetsc(object):
         
         ts.solve(U)
         solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_list))], dim=0)
-        #print(torch.norm(solution-u0))
+        
         # j = 1
         # sol_interp = [u0]
         # for j0 in range(len(solution)-1):
@@ -205,6 +206,8 @@ class ODEPetsc(object):
         t = t.to(self.device, torch.float64)
         ts = self.ts
         dt = ts.getTimeStep()
+        # dt = self.step_size
+        # print(dt)
         # print('do {} adjoint steps'.format(round(((t[1]-t[0])/dt).abs().item())))
         ts.adjointSetSteps(round(((t[1]-t[0])/dt).abs().item()))
         ts.adjointSolve()
@@ -252,6 +255,7 @@ class OdeintAdjointMethod(torch.autograd.Function):
             ctx.ode.adj_p[0].zeroEntries()
 
             for i in range(T-1, 0, -1):
+                # print([t[i],t[i-1]])
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i - 1]]))
                 adj_u_tensor += grad_output[0][i-1].reshape(adj_u_tensor.shape) # add forcing
                 ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors

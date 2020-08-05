@@ -259,6 +259,10 @@ if __name__ == '__main__':
     samp_trajs = torch.from_numpy(samp_trajs).float().to(device)
     samp_ts = torch.from_numpy(samp_ts).float().to(device)
 
+    options = {}
+    options.update({'step_size':orig_ts[1]-orig_ts[0]})
+    args.step_size = orig_ts[1]-orig_ts[0]
+    print(args.step_size)
 
     # model
     func = LatentODEfunc(latent_dim, nhidden).to(device)
@@ -290,7 +294,7 @@ if __name__ == '__main__':
         if args.impl == 'PETSc':
             print('petsc init')
             ode = petsc_adjoint.ODEPetsc()
-            ode.setupTS(torch.zeros(1000,4).to(device), func, step_size=args.step_size, method=args.method, enable_adjoint=True)
+            ode.setupTS(torch.zeros(1000,4).to(device), func, args.step_size, args.method, enable_adjoint=True)
 
         
 
@@ -306,6 +310,7 @@ if __name__ == '__main__':
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
 
             # forward in time and solve ode for reconstructions
+            
             if args.impl == 'NODE':
                 pred_z = odeint(func, z0, samp_ts, method=args.method, options=options).permute(1, 0, 2)
             else:
@@ -406,11 +411,14 @@ if __name__ == '__main__':
         #            :, 1],label='sampled perdiction', s=3, c='b')
                     
         ax.legend()
+        rmse = np.linalg.norm( xs_pos - samp_traj)
+        ax.set_title('Total time {:.2f}, RMSE {:.3f}'.format(end_time-start_time, rmse))
         
         ax2.plot(loss_array, 'o',label='ELBO')
         ax2.plot(loss_avg_array,'x',label='Avg ELBO')
         ax2.legend()
-        ax.set_title('Avg Elbo {:.3f}, final Elbo {:.3f}, total time {:.2f}'.format(-loss_meter.avg,loss_array[-1], end_time-start_time))
+        ax2.set_title('Avg Elbo {:.3f}, final Elbo {:.3f}'.format(-loss_meter.avg,loss_array[-1]))
+        
         fig_name = './latent_ODE/'+args.impl+'_'+args.method+'_'+str(args.nsample)+str(args.implicit)+'.png'
         plt.savefig(fig_name, dpi=500)
         print('Saved visualization figure at {}'.format(fig_name))
