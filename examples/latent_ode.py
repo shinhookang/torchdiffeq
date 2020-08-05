@@ -35,8 +35,6 @@ sys.argv = [sys.argv[0]] + unknown
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
 
-#args = parser.parse_args()
-
 if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
     print('implicit')
@@ -59,11 +57,11 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 def generate_spiral2d(nspiral=1000,
-                      ntotal=500,
+                      ntotal=300,
                       nsample=100,
                       start=0.,
                       stop=1,  # approximately equal to 6pi
-                      noise_std=.1,
+                      noise_std=.02,
                       a=0.,
                       b=1.,
                       savefig=True):
@@ -89,6 +87,7 @@ def generate_spiral2d(nspiral=1000,
     # add 1 all timestamps to avoid division by 0
     orig_ts = np.linspace(start, stop, num=ntotal)
     samp_ts = orig_ts[:nsample]
+    
 
     # generate clock-wise and counter clock-wise spirals in observation space
     # with two sets of time-invariant latent dynamics
@@ -131,6 +130,13 @@ def generate_spiral2d(nspiral=1000,
     # trajectories only for ease of indexing
     orig_trajs = np.stack(orig_trajs, axis=0)
     samp_trajs = np.stack(samp_trajs, axis=0)
+    print(samp_trajs.shape)
+    
+    if args.nsample < nsample:
+        
+        samp_ts = samp_ts[ range(0,int(args.nsample*np.floor(nsample/args.nsample)),int(np.floor(nsample/args.nsample))) ]
+        samp_trajs = samp_trajs[:, range(0,int(args.nsample*np.floor(nsample/args.nsample)),int(np.floor(nsample/args.nsample))),: ]
+       
     return orig_trajs, samp_trajs, orig_ts, samp_ts
 
 
@@ -232,11 +238,11 @@ if __name__ == '__main__':
     nspiral = 1000
     start = 0.
     stop = 6 * np.pi
-    noise_std = .3
+    noise_std = .1 #.3
     a = 0.
     b = .3
-    ntotal = 1000
-    nsample = args.nsample
+    #ntotal = 1000
+    nsample = 100
     device = torch.device('cuda:' + str(args.gpu)
                           if torch.cuda.is_available() else 'cpu')
 
@@ -252,10 +258,6 @@ if __name__ == '__main__':
     orig_trajs = torch.from_numpy(orig_trajs).float().to(device)
     samp_trajs = torch.from_numpy(samp_trajs).float().to(device)
     samp_ts = torch.from_numpy(samp_ts).float().to(device)
-    options = {}
-    options.update({'step_size':samp_ts[1]-samp_ts[0]})
-    print(samp_ts[1]-samp_ts[0])
-    
 
 
     # model
@@ -286,8 +288,11 @@ if __name__ == '__main__':
 
     try:
         if args.impl == 'PETSc':
+            print('petsc init')
             ode = petsc_adjoint.ODEPetsc()
             ode.setupTS(torch.zeros(1000,4).to(device), func, step_size=args.step_size, method=args.method, enable_adjoint=True)
+
+        
 
         for itr in range(1, args.niters + 1):
             optimizer.zero_grad()
@@ -304,8 +309,7 @@ if __name__ == '__main__':
             if args.impl == 'NODE':
                 pred_z = odeint(func, z0, samp_ts, method=args.method, options=options).permute(1, 0, 2)
             else:
-                #print(z0.shape)
-                pred_z = ode.odeint(z0, samp_ts).permute(1, 0, 2)
+                pred_z = ode.odeint_adjoint(z0, samp_ts).permute(1, 0, 2)
             pred_x = dec(pred_z)
 
             # compute loss
@@ -356,9 +360,9 @@ if __name__ == '__main__':
 
             # take first trajectory for visualization
             z0 = z0[0]
-
-            ts_pos = np.arange(0,133)*args.step_size #np.linspace(0., 2. * np.pi, num=2000)
-            ts_neg = np.arange(0,67)*args.step_size - np.pi#np.linspace(-np.pi, 0., num=2000)[::-1].copy()
+            print(samp_ts)
+            ts_pos = samp_ts.cpu().detach().numpy()#np.linspace(0., 2. * np.pi, num=2000)
+            ts_neg = -ts_pos[::-1] #np.linspace(-np.pi, 0., num=2000)[::-1].copy()
             ts_pos = torch.from_numpy(ts_pos).float().to(device)
             ts_neg = torch.from_numpy(ts_neg).float().to(device)
             if args.impl == 'NODE':
@@ -367,8 +371,8 @@ if __name__ == '__main__':
             else:
                 ode0 = petsc_adjoint.ODEPetsc()
                 ode0.setupTS(torch.zeros_like(z0), func, step_size=args.step_size, method=args.method, enable_adjoint=False)
-                zs_pos = ode0.odeint(z0, ts_pos)
-                zs_neg = ode0.odeint(z0, ts_neg)
+                zs_pos = ode0.odeint_adjoint(z0, ts_pos)
+                zs_neg = ode0.odeint_adjoint(z0, ts_neg)
 
             xs_pos = dec(zs_pos)
             xs_neg = torch.flip(dec(zs_neg), dims=[0])
@@ -393,8 +397,10 @@ if __name__ == '__main__':
                  label='learned trajectory (t<0)')
         ax.scatter(samp_traj[:, 0], samp_traj[
                     :, 1], label='sampled data', s=3, c='g')
-        ax.set_xlim( min(orig_traj[:,0]) , max(orig_traj[:,0]) )
-        ax.set_ylim( min(orig_traj[:,1]) , max(orig_traj[:,1]) )
+        #ax.set_xlim( min(orig_traj[:,0]) , max(orig_traj[:,0]) )
+        #ax.set_ylim( min(orig_traj[:,1]) , max(orig_traj[:,1]) )
+        ax.set_xlim(-8,-2)
+        ax.set_ylim(-4,3)
         
         #plt.scatter(zs_pred[:, 0], zs_pred[
         #            :, 1],label='sampled perdiction', s=3, c='b')

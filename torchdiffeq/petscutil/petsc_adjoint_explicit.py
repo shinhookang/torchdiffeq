@@ -3,6 +3,7 @@ import torch.nn as nn
 from .._impl.misc import _flatten, _flatten_convert_none_to_zeros
 import petsc4py
 from petsc4py import PETSc
+import copy
 
 
 class JacShell:
@@ -75,6 +76,8 @@ class ODEPetsc(object):
         #print(dt)
         if abs(t-self.sol_times[self.cur_index]) < dt/5:#1E-6:
             unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
+            #print(unew[0])
+            #print(self.sol_list)
             self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
 
@@ -143,15 +146,12 @@ class ODEPetsc(object):
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
         #self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
-        #U = self.U
+        U = self.U
         U = PETSc.Vec().createWithArray(u0.cpu().detach().numpy()) # convert to PETSc vec
         ts = self.ts
         
         self.sol_times = t.to(self.device, torch.float64)
         #self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
-        # print(self.sol_times)
-        # print(self.step_size)
-        
         assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
         self.sol_times = self.sol_times.to(u0[0])
         self.sol_list = []
@@ -160,9 +160,10 @@ class ODEPetsc(object):
         ts.setMaxTime(self.sol_times[-1])
         ts.setStepNumber(0)
         ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
+        
         ts.solve(U)
         solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_list))], dim=0)
-        
+        #print(torch.norm(solution-u0))
         # j = 1
         # sol_interp = [u0]
         # for j0 in range(len(solution)-1):
@@ -252,8 +253,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
 
             for i in range(T-1, 0, -1):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i - 1]]))
-                #print(adj_u_tensor.shape)
-                #print(grad_output[0][i-1].shape)
                 adj_u_tensor += grad_output[0][i-1].reshape(adj_u_tensor.shape) # add forcing
                 ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
 
