@@ -15,48 +15,21 @@ import sys
 sys.path.append("../")
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--step_size', type=eval, default= 0.0378)
 parser.add_argument('--adjoint', type=eval, default=False)
 parser.add_argument('--visualize', type=eval, default=False)
-parser.add_argument('--test_freq', type=int, default=100)
-parser.add_argument('--niters', type=int, default=20000)
+parser.add_argument('--niters', type=int, default=2000)
 parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--gpu', type=int, default=1)
 parser.add_argument('--train_dir', type=str, default=None)
 parser.add_argument('--nsample', type=int, default=100)
-parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','midpoint'], default='euler')
-parser.add_argument('--implicit', action='store_true')
-parser.add_argument('--double_prec', action='store_true')
-parser.add_argument('--impl', type=str, choices=['PETSc','NODE'],default='NODE')
-args, unknown = parser.parse_known_args()
 
-import petsc4py
-sys.argv = [sys.argv[0]] + unknown
-petsc4py.init(sys.argv)
-from petsc4py import PETSc
-
-#args = parser.parse_args()
-
-if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
-    print('implicit')
-else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
-    print('explicit')
+args = parser.parse_args()
 
 if args.adjoint:
     from torchdiffeq import odeint_adjoint as odeint
 else:
     from torchdiffeq import odeint
 
-options = {}
-options.update({'step_size':args.step_size})
-
-# Set these random seeds, so everything can be reproduced. 
-np.random.seed(0)
-torch.manual_seed(0)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 
 def generate_spiral2d(nspiral=1000,
                       ntotal=500,
@@ -131,6 +104,7 @@ def generate_spiral2d(nspiral=1000,
     # trajectories only for ease of indexing
     orig_trajs = np.stack(orig_trajs, axis=0)
     samp_trajs = np.stack(samp_trajs, axis=0)
+
     return orig_trajs, samp_trajs, orig_ts, samp_ts
 
 
@@ -224,7 +198,6 @@ def normal_kl(mu1, lv1, mu2, lv2):
 
 
 if __name__ == '__main__':
-    start_time = time.time()
     latent_dim = 4
     nhidden = 20
     rnn_nhidden = 25
@@ -243,7 +216,6 @@ if __name__ == '__main__':
     # generate toy spiral data
     orig_trajs, samp_trajs, orig_ts, samp_ts = generate_spiral2d(
         nspiral=nspiral,
-        nsample=nsample,
         start=start,
         stop=stop,
         noise_std=noise_std,
@@ -252,11 +224,6 @@ if __name__ == '__main__':
     orig_trajs = torch.from_numpy(orig_trajs).float().to(device)
     samp_trajs = torch.from_numpy(samp_trajs).float().to(device)
     samp_ts = torch.from_numpy(samp_ts).float().to(device)
-    options = {}
-    options.update({'step_size':samp_ts[1]-samp_ts[0]})
-    print(samp_ts[1]-samp_ts[0])
-    
-
 
     # model
     func = LatentODEfunc(latent_dim, nhidden).to(device)
@@ -265,8 +232,6 @@ if __name__ == '__main__':
     params = (list(func.parameters()) + list(dec.parameters()) + list(rec.parameters()))
     optimizer = optim.Adam(params, lr=args.lr)
     loss_meter = RunningAverageMeter()
-    loss_array = []
-    loss_avg_array = []
 
     if args.train_dir is not None:
         if not os.path.exists(args.train_dir):
@@ -285,10 +250,6 @@ if __name__ == '__main__':
             print('Loaded ckpt from {}'.format(ckpt_path))
 
     try:
-        if args.impl == 'PETSc':
-            ode = petsc_adjoint.ODEPetsc()
-            ode.setupTS(torch.zeros(1000,4).to(device), func, step_size=args.step_size, method=args.method, enable_adjoint=True)
-
         for itr in range(1, args.niters + 1):
             optimizer.zero_grad()
             # backward in time to infer q(z_0)
@@ -301,11 +262,7 @@ if __name__ == '__main__':
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
 
             # forward in time and solve ode for reconstructions
-            if args.impl == 'NODE':
-                pred_z = odeint(func, z0, samp_ts, method=args.method, options=options).permute(1, 0, 2)
-            else:
-                #print(z0.shape)
-                pred_z = ode.odeint(z0, samp_ts).permute(1, 0, 2)
+            pred_z = odeint(func, z0, samp_ts).permute(1, 0, 2)
             pred_x = dec(pred_z)
 
             # compute loss
@@ -320,10 +277,8 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
             loss_meter.update(loss.item())
-            loss_array = loss_array + [-loss.item()]
-            loss_avg_array.append(  -loss_meter.avg)
-            if itr % args.test_freq == 0:
-                print('Iter: {}, running avg elbo: {:.4f}'.format(itr, -loss_meter.avg))
+
+            print('Iter: {}, running avg elbo: {:.4f}'.format(itr, -loss_meter.avg))
 
     except KeyboardInterrupt:
         if args.train_dir is not None:
@@ -341,8 +296,7 @@ if __name__ == '__main__':
             print('Stored ckpt at {}'.format(ckpt_path))
     print('Training complete after {} iters.'.format(itr))
 
-    if True:#args.visualize:
-        end_time = time.time()
+    if args.visualize:
         with torch.no_grad():
             # sample from trajectorys' approx. posterior
             h = rec.initHidden().to(device)
@@ -357,54 +311,31 @@ if __name__ == '__main__':
             # take first trajectory for visualization
             z0 = z0[0]
 
-            ts_pos = np.arange(0,133)*args.step_size #np.linspace(0., 2. * np.pi, num=2000)
-            ts_neg = np.arange(0,67)*args.step_size - np.pi#np.linspace(-np.pi, 0., num=2000)[::-1].copy()
+            ts_pos = np.linspace(0., 2. * np.pi, num=2000)
+            ts_neg = np.linspace(-np.pi, 0., num=2000)[::-1].copy()
             ts_pos = torch.from_numpy(ts_pos).float().to(device)
             ts_neg = torch.from_numpy(ts_neg).float().to(device)
-            if args.impl == 'NODE':
-                zs_pos = odeint(func, z0, ts_pos, method=args.method, options=options)
-                zs_neg = odeint(func, z0, ts_neg, method=args.method, options=options)
-            else:
-                ode0 = petsc_adjoint.ODEPetsc()
-                ode0.setupTS(torch.zeros_like(z0), func, step_size=args.step_size, method=args.method, enable_adjoint=False)
-                zs_pos = ode0.odeint(z0, ts_pos)
-                zs_neg = ode0.odeint(z0, ts_neg)
+
+            zs_pos = odeint(func, z0, ts_pos)
+            zs_neg = odeint(func, z0, ts_neg)
 
             xs_pos = dec(zs_pos)
             xs_neg = torch.flip(dec(zs_neg), dims=[0])
 
         xs_pos = xs_pos.cpu().numpy()
         xs_neg = xs_neg.cpu().numpy()
-        # zs_pred = zs_pred.cpu().numpy()
         orig_traj = orig_trajs[0].cpu().numpy()
         samp_traj = samp_trajs[0].cpu().numpy()
 
-        
-        f = plt.figure(figsize=(10,3))
-        ax = f.add_subplot(121)
-        ax2 = f.add_subplot(122)
-
-        ax.plot(orig_traj[:, 0], orig_traj[:, 1],
+        plt.figure()
+        plt.plot(orig_traj[:, 0], orig_traj[:, 1],
                  'g', label='true trajectory')
-                
-        ax.plot(xs_pos[:, 0], xs_pos[:, 1], 'b',
+        plt.plot(xs_pos[:, 0], xs_pos[:, 1], 'r',
                  label='learned trajectory (t>0)')
-        ax.plot(xs_neg[:, 0], xs_neg[:, 1], 'r',
+        plt.plot(xs_neg[:, 0], xs_neg[:, 1], 'c',
                  label='learned trajectory (t<0)')
-        ax.scatter(samp_traj[:, 0], samp_traj[
-                    :, 1], label='sampled data', s=3, c='g')
-        ax.set_xlim( min(orig_traj[:,0]) , max(orig_traj[:,0]) )
-        ax.set_ylim( min(orig_traj[:,1]) , max(orig_traj[:,1]) )
-        
-        #plt.scatter(zs_pred[:, 0], zs_pred[
-        #            :, 1],label='sampled perdiction', s=3, c='b')
-                    
-        ax.legend()
-        
-        ax2.plot(loss_array, 'o',label='ELBO')
-        ax2.plot(loss_avg_array,'x',label='Avg ELBO')
-        ax2.legend()
-        ax.set_title('Avg Elbo {:.3f}, final Elbo {:.3f}, total time {:.2f}'.format(-loss_meter.avg,loss_array[-1], end_time-start_time))
-        fig_name = './latent_ODE/'+args.impl+'_'+args.method+'_'+str(args.nsample)+str(args.implicit)+'.png'
-        plt.savefig(fig_name, dpi=500)
-        print('Saved visualization figure at {}'.format(fig_name))
+        plt.scatter(samp_traj[:, 0], samp_traj[
+                    :, 1], label='sampled data', s=3)
+        plt.legend()
+        plt.savefig('./vis.png', dpi=500)
+        print('Saved visualization figure at {}'.format('./vis.png'))

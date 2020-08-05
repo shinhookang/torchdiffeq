@@ -120,7 +120,7 @@ class ODEPetsc(object):
         dt = ts.getTimeStep()
         if abs(t-self.sol_times[self.cur_index]) < dt/5:#1e-6:
             unew = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
-            self.sol_list.append(unew.clone())
+            self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, method='cn', enable_adjoint=True):
@@ -187,10 +187,10 @@ class ODEPetsc(object):
 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
-        # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
-        U = PETSc.Vec().createWithArray(u0.cpu().detach().numpy()) # convert to PETSc vec
+        self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
+        U = PETSc.Vec().createWithArray(self.u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
-        self.sol_times = t.to(u0[0].device, torch.float64)
+        self.sol_times = t.to(self.u0[0].device, torch.float64)
         self.sol_list = []
         self.cur_index = 0
         ts.setTime(self.sol_times[0])
