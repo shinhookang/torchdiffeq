@@ -43,7 +43,7 @@ petsc4py.init(sys.argv)
 from petsc4py import PETSc
 # OptDB = PETSc.Options()
 # print("first init: ",OptDB.getAll())
-sys.path.append('/home/zhaow/torchdiffeq')
+sys.path.append("../")
 import torchdiffeq
 from torchdiffeq.petscutil import petsc_adjoint
 
@@ -55,7 +55,7 @@ true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]])
 
 class Lambda(nn.Module):
     def forward(self, t, y):
-        return torch.mm(y**3, true_A)
+        return torch.mm(y, true_A)
 
 ode0 = petsc_adjoint.ODEPetsc()
 ode0.setupTS(true_y0, Lambda(), step_size=step_size, enable_adjoint=False)
@@ -148,7 +148,7 @@ class ODEFunc(nn.Module):
                 nn.init.constant_(m.bias, val=0)
 
     def forward(self, t, y):
-        return self.net(y**3)
+        return self.net(y)
 
 
 class RunningAverageMeter(object):

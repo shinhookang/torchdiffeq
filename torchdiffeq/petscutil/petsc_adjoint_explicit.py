@@ -75,7 +75,7 @@ class ODEPetsc(object):
         #print(dt)
         if abs(t-self.sol_times[self.cur_index]) < dt/5:#1E-6:
             unew = torch.from_numpy(U.getArray(readonly=True).reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
-            self.sol_list.append(unew)
+            self.sol_list.append(unew.clone())
             self.cur_index = self.cur_index+1
 
     def setupTS(self, u_tensor, func, step_size=0.01, method='dopri5_fixed', enable_adjoint=True):
@@ -144,12 +144,14 @@ class ODEPetsc(object):
         """Return the solutions in tensor"""
         #self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         U = self.U
-        U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
+        U = PETSc.Vec().createWithArray(u0.cpu().detach().numpy()) # convert to PETSc vec
         ts = self.ts
         
         self.sol_times = t.to(self.device, torch.float64)
         #self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
-        #print(self.sol_times)
+        print(self.sol_times)
+        print(self.step_size)
+        
         assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
         self.sol_times = self.sol_times.to(u0[0])
         self.sol_list = []
@@ -160,7 +162,7 @@ class ODEPetsc(object):
         ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
         ts.solve(U)
         solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_list))], dim=0)
-
+        
         # j = 1
         # sol_interp = [u0]
         # for j0 in range(len(solution)-1):
