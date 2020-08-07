@@ -255,6 +255,7 @@ if __name__ == '__main__':
         noise_std=noise_std,
         a=a, b=b
     )
+    #exit()
     orig_trajs = torch.from_numpy(orig_trajs).float().to(device)
     samp_trajs = torch.from_numpy(samp_trajs).float().to(device)
     samp_ts = torch.from_numpy(samp_ts).float().to(device)
@@ -367,17 +368,30 @@ if __name__ == '__main__':
             z0 = z0[0]
             print(samp_ts)
             ts_pos = samp_ts.cpu().detach().numpy()#np.linspace(0., 2. * np.pi, num=2000)
-            ts_neg = -ts_pos[::-1] #np.linspace(-np.pi, 0., num=2000)[::-1].copy()
+            ts_neg = -ts_pos.copy() #np.linspace(-np.pi, 0., num=2000)[::-1].copy()
             ts_pos = torch.from_numpy(ts_pos).float().to(device)
             ts_neg = torch.from_numpy(ts_neg).float().to(device)
+
+            
             if args.impl == 'NODE':
                 zs_pos = odeint(func, z0, ts_pos, method=args.method, options=options)
                 zs_neg = odeint(func, z0, ts_neg, method=args.method, options=options)
             else:
-                ode0 = petsc_adjoint.ODEPetsc()
-                ode0.setupTS(torch.zeros_like(z0), func, step_size=args.step_size, method=args.method, enable_adjoint=False)
-                zs_pos = ode0.odeint_adjoint(z0, ts_pos)
-                zs_neg = ode0.odeint_adjoint(z0, ts_neg)
+                
+                ode0 = petsc_adjoint.ODEPetsc() 
+                ode0.setupTS(z0.to(torch.float64) , func.double(), step_size=args.step_size, method=args.method, enable_adjoint=False)
+                zs_pos = ode0.odeint_adjoint(z0.to(torch.float64), ts_pos).to(torch.float32)
+                func_neg = func
+                if args.implicit:
+                    import copy
+                    func_neg = copy.deepcopy(func)
+                    func_neg.fc3.weight = nn.Parameter(-func_neg.fc3.weight)
+                    func_neg.fc3.bias = nn.Parameter(-func_neg.fc3.bias)
+
+                ode0 = petsc_adjoint.ODEPetsc() 
+                ode0.setupTS(z0.to(torch.float64) , func_neg.double(), step_size=args.step_size, method=args.method, enable_adjoint=True)
+                
+                zs_neg = ode0.odeint_adjoint(z0.to(torch.float64), ts_neg).to(torch.float32)
 
             xs_pos = dec(zs_pos)
             xs_neg = torch.flip(dec(zs_neg), dims=[0])

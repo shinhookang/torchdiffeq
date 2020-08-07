@@ -187,6 +187,12 @@ class ODEPetsc(object):
 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
+        # check if time grid is decreasing, as PETSc does not support negative time step
+        if t[0]>t[1]:
+            #import copy
+            t = -t
+            #_base_reverse_func = copy.deepcopy(self.func)   
+            #self.func.forward = lambda t, y: torch.tensor( tuple(-f_ for f_ in _base_reverse_func(-t, y)), dtype=self.tensor_type)
         self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         U = PETSc.Vec().createWithArray(self.u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
