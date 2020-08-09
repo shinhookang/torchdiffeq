@@ -27,6 +27,7 @@ parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--step_size', type=float, default=0.025)
 parser.add_argument('--implicit_form', action='store_true')
 parser.add_argument('--double_prec', action='store_true')
+parser.add_argument('--use_dlpack', action='store_true')
 args, unknown = parser.parse_known_args()
 
 gpu = args.gpu
@@ -38,6 +39,7 @@ batch_size = args.batch_size
 step_size = args.step_size
 implicit_form = args.implicit_form
 double_prec = args.double_prec
+use_dlpack = args.use_dlpack
 import petsc4py
 sys.argv = [sys.argv[0]] + unknown
 petsc4py.init(sys.argv)
@@ -49,7 +51,7 @@ sys.path.append("../") # for quick debugging
 from torchdiffeq import petsc_adjoint
 
 device = torch.device('cuda:' + str(gpu) if torch.cuda.is_available() else 'cpu')
-
+# device = torch.device('cpu')
 if double_prec:
     print('Using float64')
     true_y0 = torch.tensor([[2., 0.]], dtype=torch.float64).to(device)
@@ -71,7 +73,7 @@ if step_size > 25.0/(data_size-1) :
     sys.exit()
 
 ode0 = petsc_adjoint.ODEPetsc()
-ode0.setupTS(true_y0, Lambda(), step_size=step_size, enable_adjoint=False, implicit_form=implicit_form)
+ode0.setupTS(true_y0, Lambda(), step_size=step_size, enable_adjoint=False, implicit_form=implicit_form, use_dlpack=use_dlpack)
 
 with torch.no_grad():
     true_y = ode0.odeint(true_y0, t)
@@ -199,7 +201,7 @@ if __name__ == '__main__':
     loss_meter = RunningAverageMeter(0.97)
 
     ode = petsc_adjoint.ODEPetsc()
-    ode.setupTS(batch_y0, func, step_size=step_size, implicit_form=implicit_form)
+    ode.setupTS(batch_y0, func, step_size=step_size, implicit_form=implicit_form, use_dlpack=use_dlpack)
     for itr in range(1, niters + 1):
         optimizer.zero_grad()
         batch_y0, batch_t, batch_y = get_batch()
@@ -213,7 +215,7 @@ if __name__ == '__main__':
 
         if itr % test_freq == 0:
             with torch.no_grad():
-                ode0.setupTS(true_y0, func, step_size=step_size, enable_adjoint=False, implicit_form=implicit_form)
+                ode0.setupTS(true_y0, func, step_size=step_size, enable_adjoint=False, implicit_form=implicit_form, use_dlpack=use_dlpack)
                 pred_y = ode0.odeint_adjoint(true_y0, t)
                 loss = torch.mean(torch.abs(pred_y - true_y))
                 print('Iter {:04d} | Total Loss {:.6f}'.format(itr, loss.item()))
