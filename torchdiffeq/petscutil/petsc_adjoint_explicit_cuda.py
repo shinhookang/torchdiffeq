@@ -19,13 +19,12 @@ class JacShell:
             self.x_tensor = torch.from_numpy(X.getArray(readonly=True).reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
             y = Y.array
         
-        f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
             self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
             # u_tensor = self.ode_.cached_u_tensor.to(self.ode_.device)
-            self.ode_.func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
+            func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
             vjp_u = torch.autograd.grad(
-                self.ode_.func_eval, self.ode_.cached_u_tensor,
+                func_eval, self.ode_.cached_u_tensor,
                 self.x_tensor, allow_unused=True, retain_graph=True
             )
         # autograd.grad returns None if no gradient, set to zero.
@@ -51,7 +50,7 @@ class JacPShell:
         with torch.set_grad_enabled(True):
             # t = t.to(self.cached_u_tensor.device).detach().requires_grad_(False)
             # u_tensor = self.ode_.cached_u_tensor.to(self.ode_.device)
-            func_eval = self.ode_.func_eval#self.ode_.func(self.ode_.t, u_tensor)
+            func_eval = self.ode_.func(self.ode_.t, u_tensor)
             vjp_params = torch.autograd.grad(
                 func_eval, f_params,
                 self.x_tensor, allow_unused=True, retain_graph=True
@@ -118,8 +117,8 @@ class ODEPetsc(object):
     def setupTS(self, u_tensor, func, step_size=0.01, method='dopri5_fixed', enable_adjoint=True):
         self.device = u_tensor.device
         self.cached_u_tensor = u_tensor
-        self.tensor_type = u_tensor.dtype
-        self.use_dlpack = True#u_tensor.is_cuda
+        self.tensor_type = u_tensor.type()
+        self.use_dlpack = u_tensor.is_cuda
         self.n = u_tensor.numel()
         if self.use_dlpack:
             self.cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u_tensor)) # convert to PETSc vec
@@ -143,6 +142,7 @@ class ODEPetsc(object):
             self.ts.setRKType('4')
         elif method == 'dopri5_fixed':
             self.ts.setRKType('5dp')
+        self.ts.setEquationType(PETSc.TS.EquationType.ODE_EXPLICIT)
         self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
 
         F = self.cached_U.duplicate()
@@ -201,11 +201,11 @@ class ODEPetsc(object):
         else:
             U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
-        
-        self.sol_times = t.to(self.device, torch.float64)
+
+        self.sol_times = t.cpu().to(dtype=torch.float64)
         #self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
         assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
-        self.sol_times = self.sol_times.to(u0[0])
+        #self.sol_times = self.sol_times.to(u0[0])
         self.sol_list = []
         self.cur_index = 0
         ts.setTime(self.sol_times[0])
