@@ -50,7 +50,7 @@ class JacPShell:
         with torch.set_grad_enabled(True):
             # t = t.to(self.cached_u_tensor.device).detach().requires_grad_(False)
             # u_tensor = self.ode_.cached_u_tensor.to(self.ode_.device)
-            func_eval = self.ode_.func(self.ode_.t, u_tensor)
+            func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
             vjp_params = torch.autograd.grad(
                 func_eval, f_params,
                 self.x_tensor, allow_unused=True, retain_graph=True
@@ -74,7 +74,7 @@ class ODEPetsc(object):
             # have to call to() or type() to avoid a PETSc seg fault
             u_tensor = dlpack.from_dlpack(U.toDlpack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
             dudt = dlpack.from_dlpack(F.toDlpack()).view(self.cached_u_tensor.size())
-            # Resotring the handle set the offloadmask flag to PETSC_OFFLOAD_GPU, but it zeros out the GPU memory accidentally, which is probably a bug
+            # Restoring the handle set the offloadmask flag to PETSC_OFFLOAD_GPU, but it zeros out the GPU memory accidentally, which is probably a bug
             if torch.cuda.is_initialized():
                 hdl = F.getCUDAHandle('w')
                 F.restoreCUDAHandle(hdl,'w')
@@ -114,7 +114,7 @@ class ODEPetsc(object):
             self.sol_list.append(unew)
             self.cur_index = self.cur_index+1
 
-    def setupTS(self, u_tensor, func, step_size=0.01, method='dopri5_fixed', enable_adjoint=True):
+    def setupTS(self, u_tensor, func, step_size=0.01, method='euler', enable_adjoint=True):
         self.device = u_tensor.device
         self.cached_u_tensor = u_tensor
         self.tensor_type = u_tensor.type()
@@ -133,6 +133,9 @@ class ODEPetsc(object):
 
         self.ts.reset()
         self.ts.setType(PETSc.TS.Type.RK)
+        self.ts.setEquationType(PETSc.TS.EquationType.ODE_EXPLICIT)
+        self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
+
         # set the solver here. Currently only RK families are included.
         if method=='euler':
             self.ts.setRKType('1fe')
@@ -142,9 +145,7 @@ class ODEPetsc(object):
             self.ts.setRKType('4')
         elif method == 'dopri5_fixed':
             self.ts.setRKType('5dp')
-        self.ts.setEquationType(PETSc.TS.EquationType.ODE_EXPLICIT)
-        self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
-
+        
         F = self.cached_U.duplicate()
         self.ts.setRHSFunction(self.evalFunction, F)
 
@@ -191,11 +192,11 @@ class ODEPetsc(object):
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
         # check if time grid is decreasing, as PETSc does not support negative time steps
-        if t[0]>t[1]:
-            t = -t
-            _base_reverse_func = self.func
-            self.func = lambda t, y: torch.tensor( tuple(-f_ for f_ in _base_reverse_func(-t, y)))
-        #self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
+        # if t[0]>t[1]:
+        #     t = -t
+        #     _base_reverse_func = self.func
+        #     self.func = lambda t, y: torch.tensor( tuple(-f_ for f_ in _base_reverse_func(-t, y)))
+        # #self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         if self.use_dlpack:
             U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u0.clone())) # convert to PETSc vec
         else:
