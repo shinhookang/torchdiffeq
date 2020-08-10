@@ -22,16 +22,16 @@ class JacShell:
         with torch.set_grad_enabled(True):
             self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
             # u_tensor = self.ode_.cached_u_tensor.to(self.ode_.device)
-            func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
+            self.ode_.func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
             vjp_u = torch.autograd.grad(
-                func_eval, self.ode_.cached_u_tensor,
+                self.ode_.func_eval, self.ode_.cached_u_tensor,
                 self.x_tensor, allow_unused=True, retain_graph=True
             )
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
         if self.ode_.use_dlpack:
-            y.copy_(jvp_u[0])
+            y.copy_(vjp_u[0])
         else:
             y[:] = vjp_u[0].cpu().numpy().flatten()
 
@@ -50,7 +50,7 @@ class JacPShell:
         with torch.set_grad_enabled(True):
             # t = t.to(self.cached_u_tensor.device).detach().requires_grad_(False)
             # u_tensor = self.ode_.cached_u_tensor.to(self.ode_.device)
-            func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
+            func_eval = self.ode_.func_eval #self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
             vjp_params = torch.autograd.grad(
                 func_eval, f_params,
                 self.x_tensor, allow_unused=True, retain_graph=True
@@ -139,7 +139,7 @@ class ODEPetsc(object):
         # set the solver here. Currently only RK families are included.
         if method=='euler':
             self.ts.setRKType('1fe')
-        elif method == 'midpoint':  # 2a is Heun's method, not midpoint.
+        elif method == 'midpoint':  # 2a is Heun's method, not midpoint. 
             self.ts.setRKType('2a')
         elif method == 'rk4':
             self.ts.setRKType('4')
@@ -310,7 +310,7 @@ class OdeintAdjointMethod(torch.autograd.Function):
             if ctx.ode.use_dlpack:
                 adj_u_tensor = dlpack.from_dlpack(ctx.ode.adj_u[0].toDlpack()).view(ctx.ode.cached_u_tensor.size())
                 adj_p_tensor = dlpack.from_dlpack(ctx.ode.adj_p[0].toDlpack()).view(ctx.ode.np)
-                adj_u_tensor.copy_(grad_output[0][-1])
+                adj_u_tensor.copy_(grad_output[0][-1].reshape(adj_u_tensor.shape))
                 adj_p_tensor.zero_()
             else:
                 ctx.ode.adj_u[0].setArray(grad_output[0][-1].cpu().numpy())
@@ -320,4 +320,5 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor.add_(grad_output[0][i-1].reshape(adj_u_tensor.shape)) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
                     ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
+        
         return (adj_u_tensor, None, adj_p_tensor, None)

@@ -45,6 +45,7 @@ petsc4py.init(sys.argv)
 from petsc4py import PETSc
 sys.path.append('/home/zhaow/torchdiffeq')
 sys.path.append('/home/zhaow/anode')
+torch.cuda.set_device(1)
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 tensor_type = torch.float32
 if args.double_prec:
@@ -54,7 +55,7 @@ import torchdiffeq
 if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
 
 
 if args.impl == 'NODE_adj':
@@ -227,7 +228,10 @@ class ODEBlock_PETSc(nn.Module):
 
     def __init__(self, odefunc, train=True):
         super(ODEBlock_PETSc, self).__init__()
-        self.odefunc = odefunc
+        if args.double_prec:
+            self.odefunc = odefunc.double()
+        else:
+            self.odefunc = odefunc
         self.options = {}
         self.ode = petsc_adjoint.ODEPetsc()
         self.step_size = 1./float(args.Nt)
@@ -526,7 +530,7 @@ if __name__ == '__main__':
             #if itr % batches_per_epoch == 0:
             #    gpu_tracker.track()
         logits = model(x)
-        print(logits.dtype)
+        #print(logits.dtype)
         loss = criterion(logits, y)
         #print(loss.item())
         #exit()

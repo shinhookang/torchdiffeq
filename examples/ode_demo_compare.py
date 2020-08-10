@@ -50,7 +50,7 @@ if args.adjoint:
     from torchdiffeq import odeint_adjoint as odeint
 else:
     from torchdiffeq import odeint
-
+torch.cuda.set_device(1)
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
 if args.double_prec:
