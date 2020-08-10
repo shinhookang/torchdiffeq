@@ -43,7 +43,7 @@ if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
     print('implicit')
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
     print('explicit')
 
 if args.adjoint:
@@ -83,7 +83,7 @@ with torch.no_grad():
 
     ode0 = petsc_adjoint.ODEPetsc()
     ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False)
-
+    print('11111')
     true_y2 = ode0.odeint_adjoint(true_y0,t)
     print(true_y)
     print(true_y2)
