@@ -146,7 +146,7 @@ class ODEPetsc(object):
 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
-        # check if time grid is decreasing, as PETSc does not support negative time step
+        # check if time grid is decreasing, as PETSc does not support negative time steps
         if t[0]>t[1]:
             t = -t
             _base_reverse_func = self.func

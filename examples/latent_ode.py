@@ -29,7 +29,8 @@ parser.add_argument('--implicit', action='store_true')
 parser.add_argument('--double_prec', action='store_true')
 parser.add_argument('--impl', type=str, choices=['PETSc','NODE'],default='NODE')
 args, unknown = parser.parse_known_args()
-
+if args.train_dir is None:
+    args.train_dir = args.impl+'/'+args.method+'_'+str(args.nsample)
 import petsc4py
 sys.argv = [sys.argv[0]] + unknown
 petsc4py.init(sys.argv)
@@ -336,7 +337,7 @@ if __name__ == '__main__':
                 print('Iter: {}, running avg elbo: {:.4f}'.format(itr, -loss_meter.avg))
 
     except KeyboardInterrupt:
-        if args.train_dir is not None:
+        if args.train_dir is not None and itr == args.niters:
             ckpt_path = os.path.join(args.train_dir, 'ckpt.pth')
             torch.save({
                 'func_state_dict': func.state_dict(),
@@ -349,7 +350,7 @@ if __name__ == '__main__':
                 'samp_ts': samp_ts,
             }, ckpt_path)
             print('Stored ckpt at {}'.format(ckpt_path))
-    print('Training complete after {} iters.'.format(itr))
+        print('Training complete after {} iters.'.format(itr))
 
     if True:#args.visualize:
         end_time = time.time()
@@ -383,6 +384,7 @@ if __name__ == '__main__':
                 zs_pos = ode0.odeint_adjoint(z0.to(torch.float64), ts_pos).to(torch.float32)
                 func_neg = func
                 if args.implicit:
+                    # To do extrapolation for negative t, we need this because PETSc does not take negative time steps.
                     import copy
                     func_neg = copy.deepcopy(func)
                     func_neg.fc3.weight = nn.Parameter(-func_neg.fc3.weight)
