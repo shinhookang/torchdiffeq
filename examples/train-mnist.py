@@ -9,9 +9,6 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-#import petsc4py
-#from petsc4py import PETSc
-
 import copy
 torch.manual_seed(0)
 torch.backends.cudnn.deterministic = True
@@ -44,7 +41,10 @@ import petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
 sys.path.append("../")
-sys.path.append('/home/zhaow/anode')
+if args.impl == 'ANODE':
+    sys.path.append('/home/zhaow/anode')
+    from anode import odesolver_adjoint as odesolver
+
 torch.cuda.set_device(1)
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 tensor_type = torch.float32
@@ -62,8 +62,6 @@ if args.impl == 'NODE_adj':
     from torchdiffeq import odeint_adjoint as odeint
 else:
     from torchdiffeq import odeint
-
-from anode import odesolver_adjoint as odesolver
 
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -510,7 +508,9 @@ if __name__ == '__main__':
    # batch_time_meter = RunningAverageMeter()
     f_nfe_meter = RunningAverageMeter()
     b_nfe_meter = RunningAverageMeter()
-    
+    x, y = data_gen.__next__()
+    x = x.to(device)
+    y = y.to(device)
  
     train_loss = 0
     start = time.time()
@@ -518,9 +518,9 @@ if __name__ == '__main__':
     for itr in range(args.nepochs * batches_per_epoch):
         optimizer.zero_grad()
         torch.cuda.empty_cache()
-        x, y = data_gen.__next__()
-        x = x.to(device)
-        y = y.to(device)
+        # x, y = data_gen.__next__()
+        # x = x.to(device)
+        # y = y.to(device)
         
        
         
@@ -556,12 +556,13 @@ if __name__ == '__main__':
            
         f_nfe_meter.update(nfe_forward)
         b_nfe_meter.update(nfe_backward)
-        
+        print(torch.cuda.memory_allocated())
+
       ############################################################################################
         if itr % batches_per_epoch == 0:
             with torch.no_grad():
-                train_acc = accuracy(model_test, train_eval_loader)
-                val_acc = accuracy(model_test, test_loader)
+                train_acc = 0#accuracy(model_test, train_eval_loader)
+                val_acc = 0#accuracy(model_test, test_loader)
                 
                 
             if val_acc > best_acc:
