@@ -229,9 +229,9 @@ class ODEBlock_PETSc(nn.Module):
     def __init__(self, odefunc, train=True):
         super(ODEBlock_PETSc, self).__init__()
         if args.double_prec:
-            self.odefunc = odefunc.double()
+            self.odefunc = odefunc.double().to(device)
         else:
-            self.odefunc = odefunc
+            self.odefunc = odefunc.to(device)
         self.options = {}
         self.ode = petsc_adjoint.ODEPetsc()
         self.step_size = 1./float(args.Nt)
@@ -252,9 +252,9 @@ class ODEBlock_PETSc(nn.Module):
         self.train = train
         
         if self.train:
-            self.ode.setupTS(torch.zeros(args.batch_size,64,6,6).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+            self.ode.setupTS(torch.zeros(args.batch_size,64,6,6).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=True)
         else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,64,6,6).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
+            self.ode.setupTS(torch.zeros(args.test_batch_size,64,6,6).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=False)
        
 
     def forward(self, x):
@@ -491,7 +491,6 @@ if __name__ == '__main__':
 
     
     
-    
     lr_fn = learning_rate_with_decay(
         args.batch_size, batch_denom=128, batches_per_epoch=batches_per_epoch, boundary_epochs=[60, 100, 140],
         decay_rates=[1, 0.1, 0.01, 0.001]
@@ -523,17 +522,10 @@ if __name__ == '__main__':
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr_fn(itr)
             
-            #frame = inspect.currentframe()
-            #gpu_tracker = MemTracker(frame)
-        if args.breakpoint == True:
-            import pdb; pdb.set_trace()
-            #if itr % batches_per_epoch == 0:
-            #    gpu_tracker.track()
         logits = model(x)
         #print(logits.dtype)
         loss = criterion(logits, y)
-        #print(loss.item())
-        #exit()
+        
         if is_odenet:
             nfe_forward = feature_layers[0].nfe
             
@@ -547,13 +539,12 @@ if __name__ == '__main__':
             import pdb; pdb.set_trace()
 
         loss.backward()
-        #exit()
+        
         optimizer.step()
         if itr % batches_per_epoch == 1:
             train_loss = 0
         train_loss += loss.item()
         
-        #batch_time_meter.update(time.time() - start)
         
         if is_odenet:
             nfe_backward = feature_layers[0].nfe
@@ -564,15 +555,10 @@ if __name__ == '__main__':
         f_nfe_meter.update(nfe_forward)
         b_nfe_meter.update(nfe_backward)
         
-        # if itr % batches_per_epoch == 1:
-        #     start = time.time()
-        # if itr % batches_per_epoch == 0:
-        #     end = time.time()
-        
       ############################################################################################
         if itr % batches_per_epoch == 0:
             with torch.no_grad():
-                train_acc =accuracy(model_test, train_eval_loader)
+                train_acc = accuracy(model_test, train_eval_loader)
                 val_acc = accuracy(model_test, test_loader)
                 
                 

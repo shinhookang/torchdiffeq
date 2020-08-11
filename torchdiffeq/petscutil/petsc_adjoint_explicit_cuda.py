@@ -117,8 +117,10 @@ class ODEPetsc(object):
     def setupTS(self, u_tensor, func, step_size=0.01, method='euler', enable_adjoint=True):
         self.device = u_tensor.device
         self.cached_u_tensor = u_tensor
-        self.tensor_type = u_tensor.type()
+        self.tensor_type = u_tensor.dtype#()
         self.use_dlpack = u_tensor.is_cuda
+        if self.use_dlpack:
+            self.tensor_type = u_tensor.type()
         self.n = u_tensor.numel()
         if self.use_dlpack:
             self.cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u_tensor)) # convert to PETSc vec
@@ -200,13 +202,13 @@ class ODEPetsc(object):
         if self.use_dlpack:
             U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u0.clone())) # convert to PETSc vec
         else:
-            U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
+            U = PETSc.Vec().createWithArray(u0.cpu().detach().numpy()) # convert to PETSc vec
         ts = self.ts
 
-        self.sol_times = t.cpu().to(dtype=torch.float64)
+        self.sol_times = t.to(self.device, torch.float64)
         #self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
         assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
-        #self.sol_times = self.sol_times.to(u0[0])
+        self.sol_times = self.sol_times.to(u0[0])
         self.sol_list = []
         self.cur_index = 0
         ts.setTime(self.sol_times[0])
@@ -266,7 +268,7 @@ class ODEPetsc(object):
         adj_u, adj_p = ts.getCostGradients()
         if self.use_dlpack:
             adj_u_tensor = dlpack.from_dlpack(adj_u[0].toDlpack()).view(self.cached_u_tensor.size())
-            adj_p_tensor = dlpack.from_dlpack(adj_p[0].toDlpack()).view(self.np)
+            adj_p_tensor = dlpack.from_dlpack(adj_p[0].toDlpack()).view(self.np)  
         else:
             adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
             adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(self.tensor_type).to(self.device)
@@ -319,6 +321,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i-1]]))
                 adj_u_tensor.add_(grad_output[0][i-1].reshape(adj_u_tensor.shape)) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
-                    ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
+                    ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors              
         
         return (adj_u_tensor, None, adj_p_tensor, None)

@@ -40,7 +40,7 @@ torch.backends.cudnn.benchmark = False
 import torchdiffeq
 
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_implicit_cuda as petsc_adjoint
     print('implicit')
 else:
     from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
@@ -83,10 +83,8 @@ with torch.no_grad():
 
     ode0 = petsc_adjoint.ODEPetsc()
     ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False)
-    print('11111')
     true_y2 = ode0.odeint_adjoint(true_y0,t)
-    print(true_y)
-    print(true_y2)
+    print(true_y0.device)
     
     print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
     # exit()
@@ -173,7 +171,7 @@ class ODEFunc(nn.Module):
 
         for m in self.net.modules():
             if isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, mean=0, std=0.1)
+                nn.init.normal_(m.weight, mean=0, std=.1)
                 nn.init.constant_(m.bias, val=0)
         self.nfe = 0
 
@@ -233,6 +231,8 @@ if __name__ == '__main__':
     dot_product_array = []
     for itr in range(1, args.niters + 1):
         
+        # for p1, p2 in zip(func_NODE.parameters(), func_PETSc.parameters()):  
+        #     p1.data = p2.data.clone()
         
         optimizer_NODE.zero_grad()
         optimizer_PETSc.zero_grad()
