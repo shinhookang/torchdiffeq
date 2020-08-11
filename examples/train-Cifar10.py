@@ -82,8 +82,10 @@ if args.double_prec:
 else:
     tensor_type = torch.float32
 import torchdiffeq
-
-from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
+if args.implicit:
+    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
+else:
+    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
 
 from anode import odesolver_adjoint as odesolver
 

@@ -53,9 +53,9 @@ if args.double_prec:
 
 import torchdiffeq
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit_cuda as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
 
 
 if args.impl == 'NODE_adj':

@@ -40,10 +40,10 @@ torch.backends.cudnn.benchmark = False
 import torchdiffeq
 
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit_cuda as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
     print('implicit')
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
     print('explicit')
 
 if args.adjoint:
