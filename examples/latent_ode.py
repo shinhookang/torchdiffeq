@@ -249,7 +249,7 @@ if __name__ == '__main__':
     b = .3
     #ntotal = 1000
     nsample = 100
-    torch.cuda.set_device(1)
+    torch.cuda.set_device(args.gpu)
     device = torch.device('cuda:' + str(args.gpu)
                           if torch.cuda.is_available() else 'cpu')
 

@@ -46,12 +46,14 @@ parser.add_argument('--lr', type=float, default = 0.1)
 parser.add_argument('--Nt', type=int, default = 1)
 parser.add_argument('--batch_size', type = int, default = 256)
 parser.add_argument('--test_batch_size', type = int, default = 128)
-
 parser.add_argument('--impl',type=str, choices = ['NODE','ANODE','NODE_adj','PETSc'],default = 'ANODE')
 parser.add_argument('--tol', type=float, default=1e-3)
 parser.add_argument('--gpu', type=int, default=1)
 parser.add_argument('--save',type=str, default=None)
+parser.add_argument('--implicit', action='store_true')
+parser.add_argument('--double_prec', action='store_true')
 args, unknown = parser.parse_known_args()
+
 sys.argv = [sys.argv[0]] + unknown
 import petsc4py
 petsc4py.init(sys.argv)
@@ -73,11 +75,15 @@ sys.path.append('/home/zhaow/torchdiffeq')
 sys.path.append('/home/zhaow/anode')
 
 is_use_cuda = torch.cuda.is_available()
+torch.cuda.set_device(args.gpu)
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
-
+if args.double_prec:
+    tensor_type = torch.float64
+else:
+    tensor_type = torch.float32
 import torchdiffeq
 
-from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
 
 from anode import odesolver_adjoint as odesolver
 
@@ -100,7 +106,10 @@ class ODEBlock_ANODE(nn.Module):
 
     def __init__(self, odefunc):
         super(ODEBlock_ANODE, self).__init__()
-        self.odefunc = odefunc
+        if args.double_prec:
+            self.odefunc = odefunc.double().to(device)
+        else:
+            self.odefunc = odefunc.to(device)
         self.options = {}
         self.options.update({'Nt':int(args.Nt)})
         
@@ -116,8 +125,8 @@ class ODEBlock_ANODE(nn.Module):
         print(self.options)
 
     def forward(self, x):
-        out = odesolver(self.odefunc, x, self.options)
-        return out
+        out = odesolver(self.odefunc, x.to(tensor_type), self.options)
+        return out.to(torch.float32)
 
     @property
     def nfe(self):
@@ -131,7 +140,10 @@ class ODEBlock_NODE(nn.Module):
 
     def __init__(self, odefunc):
         super(ODEBlock_NODE, self).__init__()
-        self.odefunc = odefunc
+        if args.double_prec:
+            self.odefunc = odefunc.double().to(device)
+        else:
+            self.odefunc = odefunc.to(device)
         #if args.method == 'Dopri5':
         self.integration_time = torch.tensor(  [0,1] ).float()
         #else:
@@ -156,9 +168,9 @@ class ODEBlock_NODE(nn.Module):
             Method = 'dopri5_fixed'
             
         self.integration_time = self.integration_time.type_as(x)
-        out = odeint(self.odefunc, x, self.integration_time, rtol=args.tol, atol=1E16,method = Method,options=self.options)
+        out = odeint(self.odefunc, x.to(tensor_type), self.integration_time, rtol=args.tol, atol=1E16,method = Method,options=self.options)
            
-        return out[-1]
+        return out[-1].to(torch.float32)
 
 
     @property
@@ -173,7 +185,10 @@ class ODEBlock_PETSc(nn.Module):
 
     def __init__(self, odefunc, input_size, Train):
         super(ODEBlock_PETSc, self).__init__()
-        self.odefunc = odefunc
+        if args.double_prec:
+            self.odefunc = odefunc.double().to(device)
+        else:
+            self.odefunc = odefunc.to(device)
         self.options = {}
         
         self.step_size = 1./float(args.Nt)
@@ -192,17 +207,17 @@ class ODEBlock_PETSc(nn.Module):
         
         self.ode = petsc_adjoint.ODEPetsc()
         if Train:
-            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
         else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
+            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
         
         self.integration_time = torch.tensor(  [0,1] ).float()
         
 
     def forward(self, x):
         
-        out = self.ode.odeint_adjoint(x, self.integration_time.type_as(x))
-        return out[-1]
+        out = self.ode.odeint_adjoint(x.to(tensor_type), self.integration_time.type_as(x))
+        return out[-1].to(torch.float32)
 
     @property
     def nfe(self):

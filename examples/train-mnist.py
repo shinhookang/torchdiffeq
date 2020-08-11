@@ -43,7 +43,7 @@ sys.argv = [sys.argv[0]] + unknown
 import petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
-sys.path.append('/home/zhaow/torchdiffeq')
+sys.path.append("../")
 sys.path.append('/home/zhaow/anode')
 torch.cuda.set_device(1)
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
@@ -53,7 +53,7 @@ if args.double_prec:
 
 import torchdiffeq
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_implicit_cuda as petsc_adjoint
 else:
     from torchdiffeq.petscutil import petsc_adjoint_explicit_cuda as petsc_adjoint
 

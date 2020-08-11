@@ -202,7 +202,7 @@ class ODEPetsc(object):
         self.np = self.flat_params.numel()
 
         self.ts.reset()
-        if method=='beuler' or method=='euler':
+        if method == 'beuler' or method== 'euler':
             self.ts.setType(PETSc.TS.Type.BE)
         else:
             self.ts.setType(PETSc.TS.Type.CN)
@@ -260,9 +260,9 @@ class ODEPetsc(object):
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
         # check if time grid is decreasing, as PETSc does not support negative time step
-        if t[0]>t[1]:
+        #if t[0]>t[1]:
             #import copy
-            t = -t
+            #t = -t
             #_base_reverse_func = copy.deepcopy(self.func)   
             #self.func.forward = lambda t, y: torch.tensor( tuple(-f_ for f_ in _base_reverse_func(-t, y)), dtype=self.tensor_type)
         self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
