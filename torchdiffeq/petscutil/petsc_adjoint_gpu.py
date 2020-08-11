@@ -320,7 +320,7 @@ class ODEPetsc(object):
         # self.ts.setMaxSteps(1000)
         self.ts.setFromOptions()
         self.ts.setTimeStep(step_size) # overwrite the command-line option
-
+ 
     def odeint(self, u0, t):
         """Return the solutions in tensor"""
         # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
