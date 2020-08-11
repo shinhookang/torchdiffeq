@@ -48,6 +48,11 @@ if args.adjoint:
 else:
     from torchdiffeq import odeint
 
+if args.double_prec:
+    tensor_type = torch.float64
+else:
+    tensor_type = torch.float32
+
 options = {}
 options.update({'step_size':args.step_size})
 
@@ -244,6 +249,7 @@ if __name__ == '__main__':
     b = .3
     #ntotal = 1000
     nsample = 100
+    torch.cuda.set_device(1)
     device = torch.device('cuda:' + str(args.gpu)
                           if torch.cuda.is_available() else 'cpu')
 
@@ -268,6 +274,8 @@ if __name__ == '__main__':
 
     # model
     func = LatentODEfunc(latent_dim, nhidden).to(device)
+    if args.double_prec:
+        func = func.double()
     rec = RecognitionRNN(latent_dim, obs_dim, rnn_nhidden, nspiral).to(device)
     dec = Decoder(latent_dim, obs_dim, nhidden).to(device)
     params = (list(func.parameters()) + list(dec.parameters()) + list(rec.parameters()))
@@ -296,7 +304,7 @@ if __name__ == '__main__':
         if args.impl == 'PETSc':
             print('petsc init')
             ode = petsc_adjoint.ODEPetsc()
-            ode.setupTS(torch.zeros(1000,4).to(device), func, args.step_size, args.method, enable_adjoint=True)
+            ode.setupTS(torch.zeros(1000,4).to(device,tensor_type), func, args.step_size, args.method, enable_adjoint=True)
 
         
 
@@ -310,14 +318,15 @@ if __name__ == '__main__':
             qz0_mean, qz0_logvar = out[:, :latent_dim], out[:, latent_dim:]
             epsilon = torch.randn(qz0_mean.size()).to(device)
             z0 = epsilon * torch.exp(.5 * qz0_logvar) + qz0_mean
-
+        
             # forward in time and solve ode for reconstructions
             
             if args.impl == 'NODE':
                 pred_z = odeint(func, z0, samp_ts, method=args.method, options=options).permute(1, 0, 2)
             else:
-                pred_z = ode.odeint_adjoint(z0, samp_ts).permute(1, 0, 2)
-            pred_x = dec(pred_z)
+                pred_z = ode.odeint_adjoint(z0.to(tensor_type), samp_ts.to(tensor_type)).permute(1, 0, 2)
+                #print(pred_z.dtype)
+            pred_x = dec(pred_z.to(torch.float32))
 
             # compute loss
             noise_std_ = torch.zeros(pred_x.size()).to(device) + noise_std
@@ -383,19 +392,18 @@ if __name__ == '__main__':
                 ode0.setupTS(z0.to(torch.float64) , func.double(), step_size=args.step_size, method=args.method, enable_adjoint=False)
                 zs_pos = ode0.odeint_adjoint(z0.to(torch.float64), ts_pos).to(torch.float32)
                 func_neg = func
-                if args.implicit:
-                    # To do extrapolation for negative t, we need this because PETSc does not take negative time steps.
-                    import copy
-                    func_neg = copy.deepcopy(func)
-                    func_neg.fc3.weight = nn.Parameter(-func_neg.fc3.weight)
-                    func_neg.fc3.bias = nn.Parameter(-func_neg.fc3.bias)
+                ts_neg = -ts_neg.copy()
+                import copy
+                func_neg = copy.deepcopy(func)
+                func_neg.fc3.weight = nn.Parameter(-func_neg.fc3.weight)
+                func_neg.fc3.bias = nn.Parameter(-func_neg.fc3.bias)
 
                 ode0 = petsc_adjoint.ODEPetsc() 
                 ode0.setupTS(z0.to(torch.float64) , func_neg.double(), step_size=args.step_size, method=args.method, enable_adjoint=True)
                 
-                zs_neg = ode0.odeint_adjoint(z0.to(torch.float64), ts_neg).to(torch.float32)
+                zs_neg = ode0.odeint_adjoint(z0.to(torch.float64), ts_neg)
 
-            xs_pos = dec(zs_pos)
+            xs_pos = dec(zs_pos.to(torch.float32))
             xs_neg = torch.flip(dec(zs_neg), dims=[0])
 
         xs_pos = xs_pos.cpu().numpy()

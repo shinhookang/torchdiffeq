@@ -152,7 +152,11 @@ class ODEBlock_NODE(nn.Module):
 
     def __init__(self, odefunc):
         super(ODEBlock_NODE, self).__init__()
-        self.odefunc = odefunc
+        if args.double_prec:
+            self.odefunc = odefunc.double().to(device)
+        else:
+            self.odefunc = odefunc.to(device)
+        
   #      if args.method == 'Dopri5':
         self.integration_time = torch.tensor(  [0,1] ).float()
         #else:
@@ -178,9 +182,9 @@ class ODEBlock_NODE(nn.Module):
             Method = 'dopri5_fixed'
           
         self.integration_time = self.integration_time.type_as(x)
-        out = odeint(self.odefunc, x, self.integration_time, rtol=args.tol, atol=args.tol,method = Method, options=self.options)
+        out = odeint(self.odefunc, x.to(tensor_type), self.integration_time, rtol=args.tol, atol=args.tol,method = Method, options=self.options)
            
-        return out[-1]
+        return out[-1].to(torch.float32)
 
     @property
     def nfe(self):
@@ -194,7 +198,10 @@ class ODEBlock_ANODE(nn.Module):
 
     def __init__(self, odefunc):
         super(ODEBlock_ANODE, self).__init__()
-        self.odefunc = odefunc
+        if args.double_prec:
+            self.odefunc = odefunc.double().to(device)
+        else:
+            self.odefunc = odefunc.to(device)
         self.options = {}
         self.options.update({'Nt':args.Nt})
         #self.options.update({'method':'RK4_alt'})
@@ -213,8 +220,8 @@ class ODEBlock_ANODE(nn.Module):
 
     def forward(self, x):
         
-        out = odesolver(self.odefunc, x, self.options)
-        return out
+        out = odesolver(self.odefunc, x.to(tensor_type), self.options)
+        return out.to(torch.float32)
 
     @property
     def nfe(self):
@@ -232,6 +239,7 @@ class ODEBlock_PETSc(nn.Module):
             self.odefunc = odefunc.double().to(device)
         else:
             self.odefunc = odefunc.to(device)
+        
         self.options = {}
         self.ode = petsc_adjoint.ODEPetsc()
         self.step_size = 1./float(args.Nt)
@@ -259,9 +267,8 @@ class ODEBlock_PETSc(nn.Module):
 
     def forward(self, x):
 
-        out = self.ode.odeint_adjoint(x, self.integration_time.type_as(x))
-        
-        return out[-1]
+        out = self.ode.odeint_adjoint(x.to(tensor_type), self.integration_time.type_as(x))
+        return out[-1].to(torch.float32)
 
     @property
     def nfe(self):
@@ -368,7 +375,7 @@ def accuracy(model, dataset_loader):
     
     total_correct = 0
     for x, y in dataset_loader:
-        x = x.to(device,tensor_type)
+        x = x.to(device)
         y = one_hot(np.array(y.numpy()), 10)
 
         target_class = np.argmax(y, axis=1)
@@ -445,6 +452,7 @@ if __name__ == '__main__':
         ]
         
     ODEfunc = ODEfunc(64)
+    
     if args.impl == 'ANODE':
         ODEBlock = ODEBlock_ANODE
     elif args.impl == 'PETSc':
@@ -466,9 +474,6 @@ if __name__ == '__main__':
     #model_test = model
     model_test = nn.Sequential(*downsampling_layers, *feature_layers_test, *fc_layers).to(device)
     
-    if args.double_prec:
-        model = model.double()
-        model_test = model_test.double()
     logger.info(model)
     logger.info('Number of parameters: {}'.format(count_parameters(model)))
     
@@ -511,8 +516,10 @@ if __name__ == '__main__':
     start = time.time()
     end = time.time()
     for itr in range(args.nepochs * batches_per_epoch):
+        optimizer.zero_grad()
+        torch.cuda.empty_cache()
         x, y = data_gen.__next__()
-        x = x.to(device,tensor_type)
+        x = x.to(device)
         y = y.to(device)
         
        
@@ -522,9 +529,8 @@ if __name__ == '__main__':
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr_fn(itr)
             
-        logits = model(x)
-        #print(logits.dtype)
-        loss = criterion(logits, y)
+        
+        loss = criterion(model(x), y)
         
         if is_odenet:
             nfe_forward = feature_layers[0].nfe
@@ -532,15 +538,11 @@ if __name__ == '__main__':
             feature_layers[0].nfe = 0
         else:
             nfe_forward = 0
-           
-        optimizer.zero_grad()
             
-        if args.breakpoint == True:
-            import pdb; pdb.set_trace()
-
         loss.backward()
         
         optimizer.step()
+        torch.cuda.empty_cache()
         if itr % batches_per_epoch == 1:
             train_loss = 0
         train_loss += loss.item()
@@ -576,3 +578,4 @@ if __name__ == '__main__':
                         )
                     )
             start = time.time()
+        
