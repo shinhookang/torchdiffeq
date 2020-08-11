@@ -11,7 +11,5 @@
 *events.out*
 *png*
 *txt*
-*old.py*
-torchdiffeq/petscutil/petsc_adjoint_gpu.py
-torchdiffeq/petscutil/petsc_adjoint_*old.py
+
 
