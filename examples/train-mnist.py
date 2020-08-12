@@ -45,7 +45,7 @@ if args.impl == 'ANODE':
     sys.path.append('/home/zhaow/anode')
     from anode import odesolver_adjoint as odesolver
 
-torch.cuda.set_device(1)
+torch.cuda.set_device(args.gpu)
 device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 tensor_type = torch.float32
 if args.double_prec:
@@ -508,30 +508,29 @@ if __name__ == '__main__':
    # batch_time_meter = RunningAverageMeter()
     f_nfe_meter = RunningAverageMeter()
     b_nfe_meter = RunningAverageMeter()
-    x, y = data_gen.__next__()
-    x = x.to(device)
-    y = y.to(device)
  
     train_loss = 0
     start = time.time()
     end = time.time()
     for itr in range(args.nepochs * batches_per_epoch):
         optimizer.zero_grad()
-        torch.cuda.empty_cache()
-        # x, y = data_gen.__next__()
-        # x = x.to(device)
-        # y = y.to(device)
         
-       
+        x, y = data_gen.__next__()
+        x = x.to(device)
+        y = y.to(device)   
         
 ########################   NODE ###########################
        
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr_fn(itr)
-            
-        
-        loss = criterion(model(x), y)
-        
+        # before =  torch.cuda.memory_allocated() 
+        # print('itr', str(itr),' before forward',torch.cuda.memory_allocated())
+        logits = model(x)
+        # after = torch.cuda.memory_allocated() 
+        #print('itr', str(itr),' after forward',torch.cuda.memory_allocated())
+        # print('difference after forward: ', after-before)
+        loss = criterion(logits, y)
+        #print('itr', str(itr), ' after loss', torch.cuda.memory_allocated())
         if is_odenet:
             nfe_forward = feature_layers[0].nfe
             
@@ -540,9 +539,13 @@ if __name__ == '__main__':
             nfe_forward = 0
             
         loss.backward()
-        
+        # print('itr', str(itr), ' decrease after backward',torch.cuda.memory_allocated() - after)
+        # print('itr', str(itr), ' increase after backward',torch.cuda.memory_allocated() - before)
         optimizer.step()
-        torch.cuda.empty_cache()
+        #print('itr', str(itr), ' after optimizer',torch.cuda.memory_allocated())
+        # if itr == 50:
+        #     exit()
+        # torch.cuda.empty_cache()
         if itr % batches_per_epoch == 1:
             train_loss = 0
         train_loss += loss.item()
@@ -556,13 +559,14 @@ if __name__ == '__main__':
            
         f_nfe_meter.update(nfe_forward)
         b_nfe_meter.update(nfe_backward)
-        print(torch.cuda.memory_allocated())
+        #print(torch.cuda.memory_allocated())
 
       ############################################################################################
         if itr % batches_per_epoch == 0:
+            end = time.time()
             with torch.no_grad():
-                train_acc = 0#accuracy(model_test, train_eval_loader)
-                val_acc = 0#accuracy(model_test, test_loader)
+                train_acc = accuracy(model_test, train_eval_loader)
+                val_acc = accuracy(model_test, test_loader)
                 
                 
             if val_acc > best_acc:
@@ -571,7 +575,7 @@ if __name__ == '__main__':
                     
               
                 
-            end = time.time()    
+             
             logger.info( " Epoch {:04d} | Time per epoch {:.3f} | NFE-F {:.1f} | NFE-B {:.1f} | "
                      "Train Acc {:.4f} | Test Acc {:.4f} | Train Loss {:.10f}".format(
                             itr // batches_per_epoch, end-start, f_nfe_meter.avg,

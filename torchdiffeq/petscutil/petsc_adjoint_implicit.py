@@ -267,7 +267,7 @@ class ODEPetsc(object):
             #self.func.forward = lambda t, y: torch.tensor( tuple(-f_ for f_ in _base_reverse_func(-t, y)), dtype=self.tensor_type)
         self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         if self.use_dlpack:
-            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u0.clone())) # convert to PETSc vec
+            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.u0)) # convert to PETSc vec
         else:
             U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts

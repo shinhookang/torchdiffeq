@@ -198,17 +198,17 @@ class ODEPetsc(object):
         #     t = -t
         #     _base_reverse_func = self.func
         #     self.func = lambda t, y: torch.tensor( tuple(-f_ for f_ in _base_reverse_func(-t, y)))
-        # #self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
+        self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         if self.use_dlpack:
-            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u0.clone())) # convert to PETSc vec
+            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.u0)) # convert to PETSc vec
         else:
             U = PETSc.Vec().createWithArray(u0.cpu().detach().numpy()) # convert to PETSc vec
         ts = self.ts
 
         self.sol_times = t.to(self.device, torch.float64)
         #self.sol_times = self._grid_constructor(t).to(u0[0].device, torch.float64)
-        assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
-        self.sol_times = self.sol_times.to(u0[0])
+        #assert self.sol_times[0] == self.sol_times[0] and self.sol_times[-1] == self.sol_times[-1]
+        #self.sol_times = self.sol_times.to(u0[0])
         self.sol_list = []
         self.cur_index = 0
         ts.setTime(self.sol_times[0])
@@ -323,5 +323,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor.add_(grad_output[0][i-1].reshape(adj_u_tensor.shape)) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
                     ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors              
-        
+        print(torch.norm(adj_u_tensor))
+        exit()
         return (adj_u_tensor, None, adj_p_tensor, None)
