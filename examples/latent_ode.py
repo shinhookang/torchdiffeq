@@ -37,10 +37,10 @@ petsc4py.init(sys.argv)
 from petsc4py import PETSc
 
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_implicit_old as petsc_adjoint
     print('implicit')
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_explicit_old as petsc_adjoint
     print('explicit')
 
 if args.adjoint:
@@ -269,7 +269,8 @@ if __name__ == '__main__':
 
     options = {}
     options.update({'step_size':orig_ts[1]-orig_ts[0]})
-    args.step_size = orig_ts[1]-orig_ts[0]
+    #args.step_size = orig_ts[1]-orig_ts[0]
+    args.step_size = samp_ts[1]-samp_ts[0]
     print(args.step_size)
 
     # model
@@ -443,6 +444,6 @@ if __name__ == '__main__':
         ax2.legend()
         ax2.set_title('Avg Elbo {:.3f}, final Elbo {:.3f}'.format(-loss_meter.avg,loss_array[-1]))
         
-        fig_name = './latent_ODE/'+args.impl+'_'+args.method+'_'+str(args.nsample)+str(args.implicit)+'.png'
+        fig_name = './latent_ODE/'+args.impl+'_'+args.method+'_'+str(args.nsample)+str(args.implicit)+'_coarse.png'
         plt.savefig(fig_name, dpi=500)
         print('Saved visualization figure at {}'.format(fig_name))

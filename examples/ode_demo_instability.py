@@ -1,5 +1,5 @@
 ########################################
-#python3 ode_demo_illustration.py -ts_adapt_type none -ts_trajectory_type memory --double_prec --method midpoint --niters 200 --test_freq 10 --implicit
+#python3 ode_demo_instability.py -ts_adapt_type none -ts_trajectory_type memory --double_prec --method midpoint --niters 200 --test_freq 10 --implicit
 #######################################
 import os
 import argparse
@@ -44,10 +44,10 @@ torch.backends.cudnn.benchmark = False
 import torchdiffeq
 
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit_old as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
     print('implicit')
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit_old as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
     print('explicit')
 
 if args.adjoint:

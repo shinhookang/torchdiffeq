@@ -43,7 +43,8 @@ if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
     print('implicit')
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    #from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint# as petsc_adjoint
     print('explicit')
 
 if args.adjoint:
@@ -215,7 +216,7 @@ if __name__ == '__main__':
     func_PETSc = copy.deepcopy(func_NODE).to(device)
     ode = petsc_adjoint.ODEPetsc()
     
-    ode.setupTS(torch.zeros(args.batch_size,1,1,2).to(device,true_y0.dtype), func_PETSc, args.step_size, args.method, enable_adjoint=True)
+    ode.setupTS(torch.zeros(args.batch_size,1,2).to(device,true_y0.dtype), func_PETSc, step_size = args.step_size, method = args.method, enable_adjoint=True)
     optimizer_PETSc = optim.RMSprop(func_PETSc.parameters(), lr=1e-3)
 #  PETSc model for test
     ode0 = petsc_adjoint.ODEPetsc()
@@ -238,8 +239,10 @@ if __name__ == '__main__':
         optimizer_PETSc.zero_grad()
 
         batch_y0, batch_t, batch_y = get_batch()
+        
         start_NODE = time.time()    
         pred_y_NODE = odeint(func_NODE, batch_y0.to(device), batch_t.to(device),method=args.method,options=options).to(device)
+        
         loss_NODE = torch.mean(torch.abs(pred_y_NODE.to(device) - batch_y.to(device)))
         end_NODE = time.time()
         nfe_f_NODE = func_NODE.nfe
@@ -254,14 +257,28 @@ if __name__ == '__main__':
 
         loss_PETSc = torch.mean(torch.abs(pred_y_PETSc.to(device) - batch_y.to(device)))
         end_PETSc = time.time()
-
+        print('NODE loss before step',loss_NODE.item())
+        #print('NODE norm before step',torch.norm(pred_y_NODE))
+        
         loss_NODE.backward()
         optimizer_NODE.step()
+        print('NODE loss after step',loss_NODE.item())
+        #print('NODE norm after step',torch.norm(pred_y_NODE))
+        
         nfe_b_NODE = func_NODE.nfe
         func_NODE.nfe = 0
-
+        print('PETSc loss before step',loss_PETSc.item())
+        #print('PETSc norm before step',torch.norm(pred_y_PETSc))
+        
         loss_PETSc.backward()
+        print('PETSc loss after backward', loss_PETSc.item())
+        print('PETSc norm after backward',torch.norm(batch_y))
+
         optimizer_PETSc.step()
+        print('PETSc loss after step', loss_PETSc.item())
+        print('PETSc norm after step',torch.norm(batch_y))
+        
+        #exit()
         nfe_b_PETSc = func_PETSc.nfe
         func_PETSc.nfe = 0
 

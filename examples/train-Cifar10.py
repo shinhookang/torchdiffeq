@@ -71,8 +71,11 @@ if args.save == None:
 writer = SummaryWriter(args.save)
 
 import sys
-sys.path.append('/home/zhaow/torchdiffeq')
-sys.path.append('/home/zhaow/anode')
+sys.path.append("../")
+if args.impl == 'ANODE':
+    sys.path.append('/home/zhaow/anode')
+    from anode import odesolver_adjoint as odesolver
+
 
 is_use_cuda = torch.cuda.is_available()
 torch.cuda.set_device(args.gpu)
@@ -86,8 +89,6 @@ if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
 else:
     from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
-
-from anode import odesolver_adjoint as odesolver
 
 if args.impl == 'NODE_adj':
     from torchdiffeq import odeint_adjoint as odeint
@@ -170,8 +171,7 @@ class ODEBlock_NODE(nn.Module):
             Method = 'dopri5_fixed'
             
         self.integration_time = self.integration_time.type_as(x)
-        out = odeint(self.odefunc, x.to(tensor_type), self.integration_time, rtol=args.tol, atol=1E16,method = Method,options=self.options)
-           
+        out = odeint(self.odefunc, x.to(tensor_type), self.integration_time, rtol=args.tol, atol=1E16,method = Method,options=self.options) 
         return out[-1].to(torch.float32)
 
 
@@ -209,16 +209,16 @@ class ODEBlock_PETSc(nn.Module):
         
         self.ode = petsc_adjoint.ODEPetsc()
         if Train:
-            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=True)
+            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=True)
         else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device,tensor_type), self.odefunc.to(device), self.step_size, self.method, enable_adjoint=False)
+            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=False)
         
         self.integration_time = torch.tensor(  [0,1] ).float()
         
-
     def forward(self, x):
         
-        out = self.ode.odeint_adjoint(x.to(tensor_type), self.integration_time.type_as(x))
+        out = self.ode.odeint_adjoint(x.to(tensor_type), self.integration_time)
+
         return out[-1].to(torch.float32)
 
     @property
@@ -290,7 +290,7 @@ if is_use_cuda:
     net.to(device)
     net_test.to(device)
     
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss().to(device)
 
 def get_logger(logpath, filepath, package_files=[], displaying=True, saving=True, debug=False):
     logger = logging.getLogger()
@@ -327,7 +327,8 @@ def train(epoch):
     
     print('Training Epoch: #%d, LR: %.4f'%(epoch, lr_schedule(lr, epoch)))
     for idx, (inputs, labels) in enumerate(train_loader):
-        
+        if idx == 1:
+            exit()
         if is_use_cuda:
             inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
@@ -335,6 +336,7 @@ def train(epoch):
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
+        
         writer.add_scalar('Train/Loss', loss.item(), epoch* 50000 + batch_size * (idx + 1)  )
         train_loss += loss.item()
         _, predict = torch.max(outputs, 1)

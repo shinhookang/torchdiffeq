@@ -218,7 +218,6 @@ class ODEPetsc(object):
         
         ts.solve(U)
         solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_list))], dim=0)
-        
         # j = 1
         # sol_interp = [u0]
         # for j0 in range(len(solution)-1):

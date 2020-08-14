@@ -55,7 +55,7 @@ import torchdiffeq
 if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
 
 
 if args.impl == 'NODE_adj':
@@ -258,9 +258,9 @@ class ODEBlock_PETSc(nn.Module):
         self.train = train
         
         if self.train:
-            self.ode.setupTS(torch.zeros(args.batch_size,64,6,6).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=True)
+            self.ode.setupTS(torch.zeros(args.batch_size,64,6,6).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=True)
         else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,64,6,6).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=False)
+            self.ode.setupTS(torch.zeros(args.test_batch_size,64,6,6).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=False)
        
 
     def forward(self, x):
