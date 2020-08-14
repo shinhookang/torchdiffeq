@@ -52,7 +52,7 @@ class RHSJacShell:
             self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
             y = Y.array
         with torch.set_grad_enabled(True):
-            self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.detach().requires_grad_(True)
+            self.ode_.cached_u_tensor = self.ode_.cached_u_tensor.requires_grad_(True)
             func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
             vjp_u = torch.autograd.grad(
                func_eval, self.ode_.cached_u_tensor,
@@ -244,14 +244,13 @@ class ODEPetsc(object):
     def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True, implicit_form=False, use_dlpack=True):
         self.device = u_tensor.device
         self.tensor_type = u_tensor.type()
-        self.cached_u_tensor = u_tensor
+        self.cached_u_tensor = u_tensor.detach().clone()
         self.n = u_tensor.numel()
         self.use_dlpack = use_dlpack
         if use_dlpack:
-            x = u_tensor.detach().clone()
-            self.cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(x)) # convert to PETSc vec
+            cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.cached_u_tensor)) # convert to PETSc vec
         else:
-            self.cached_U = PETSc.Vec().createWithArray(u_tensor.cpu().numpy()) # convert to PETSc vec
+            cached_U = PETSc.Vec().createWithArray(u_tensor.cpu().numpy()) # convert to PETSc vec
 
         self.func = func
         self.step_size = step_size
@@ -263,7 +262,7 @@ class ODEPetsc(object):
         self.ts.setEquationType(PETSc.TS.EquationType.ODE_EXPLICIT)
         self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
 
-        F = self.cached_U.duplicate()
+        F = cached_U.duplicate()
         if implicit_form :
             self.ts.setIFunction(self.evalIFunction, F)
         else :
