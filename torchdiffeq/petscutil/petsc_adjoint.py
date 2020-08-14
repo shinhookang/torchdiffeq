@@ -248,7 +248,8 @@ class ODEPetsc(object):
         self.n = u_tensor.numel()
         self.use_dlpack = use_dlpack
         if use_dlpack:
-            self.cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u_tensor)) # convert to PETSc vec
+            x = u_tensor.detach().clone()
+            self.cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(x)) # convert to PETSc vec
         else:
             self.cached_U = PETSc.Vec().createWithArray(u_tensor.cpu().numpy()) # convert to PETSc vec
 
@@ -301,12 +302,14 @@ class ODEPetsc(object):
             self.adj_u = []
 
             if self.use_dlpack:
-                self.adj_u.append(PETSc.Vec().createWithDlpack(dlpack.to_dlpack(torch.zeros_like(u_tensor))))
+                self.adj_u_tensor = u_tensor.detach().clone()
+                self.adj_u.append(PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.adj_u_tensor)))
             else:
                 self.adj_u.append(PETSc.Vec().createSeq(self.n, comm=self.comm))
             self.adj_p = []
             if self.use_dlpack:
-                self.adj_p.append(PETSc.Vec().createWithDlpack(dlpack.to_dlpack(torch.zeros_like(self.flat_params))))
+                self.adj_p_tensor = self.flat_params.detach().clone()
+                self.adj_p.append(PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.adj_p_tensor)))
             else:
                 self.adj_p.append(PETSc.Vec().createSeq(self.np, comm=self.comm))
             # self.adj_p.append(torch.zeros_like(self.flat_params))
@@ -325,7 +328,8 @@ class ODEPetsc(object):
         """Return the solutions in tensor"""
         # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         if self.use_dlpack:
-            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(u0.clone())) # convert to PETSc vec
+            x = u0.detach().clone()
+            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(x)) # convert to PETSc vec
         else:
             U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
@@ -349,8 +353,8 @@ class ODEPetsc(object):
         ts.adjointSolve()
         adj_u, adj_p = ts.getCostGradients()
         if self.use_dlpack:
-            adj_u_tensor = dlpack.from_dlpack(adj_u[0].toDlpack()).view(self.cached_u_tensor.size())
-            adj_p_tensor = dlpack.from_dlpack(adj_p[0].toDlpack()).view(self.np)
+            adj_u_tensor = self.adj_u_tensor
+            adj_p_tensor = self.adj_p_tensor
         else:
             adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
             adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(self.tensor_type).to(self.device)
@@ -392,10 +396,13 @@ class OdeintAdjointMethod(torch.autograd.Function):
         T = ans.shape[0]
         with torch.no_grad():
             if ctx.ode.use_dlpack:
-                adj_u_tensor = dlpack.from_dlpack(ctx.ode.adj_u[0].toDlpack()).view(ctx.ode.cached_u_tensor.size())
-                adj_p_tensor = dlpack.from_dlpack(ctx.ode.adj_p[0].toDlpack()).view(ctx.ode.np)
-                adj_u_tensor.copy_(grad_output[0][-1])
-                adj_p_tensor.zero_()
+                ctx.ode.adj_u_tensor.copy_(grad_output[0][-1])
+                ctx.ode.adj_p_tensor.zero_()
+                if torch.cuda.is_initialized():
+                    hdl = ctx.ode.adj_u[0].getCUDAHandle('w')
+                    ctx.ode.adj_u[0].restoreCUDAHandle(hdl,'w')
+                    hdl = ctx.ode.adj_p[0].getCUDAHandle('w')
+                    ctx.ode.adj_p[0].restoreCUDAHandle(hdl,'w')
             else:
                 ctx.ode.adj_u[0].setArray(grad_output[0][-1].cpu().numpy())
                 ctx.ode.adj_p[0].zeroEntries()

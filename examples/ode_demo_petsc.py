@@ -51,6 +51,7 @@ sys.path.append("../") # for quick debugging
 from torchdiffeq import petsc_adjoint
 
 device = torch.device('cuda:' + str(gpu) if torch.cuda.is_available() else 'cpu')
+torch.cuda.set_device(gpu)
 # device = torch.device('cpu')
 if double_prec:
     print('Using float64')
