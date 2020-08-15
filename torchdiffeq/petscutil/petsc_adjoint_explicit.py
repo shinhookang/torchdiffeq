@@ -217,7 +217,7 @@ class ODEPetsc(object):
         ts.setTimeStep(self.step_size) # reset the step size because the last time step of TSSolve() may be changed even the fixed time step is used.
         
         ts.solve(U)
-        solution = torch.stack([torch.reshape(self.sol_list[i],u0.shape) for i in range(len(self.sol_list))], dim=0)
+        solution = torch.stack([self.sol_list[i] for i in range(len(self.sol_list))], dim=0)
         # j = 1
         # sol_interp = [u0]
         # for j0 in range(len(solution)-1):
@@ -312,16 +312,16 @@ class OdeintAdjointMethod(torch.autograd.Function):
             if ctx.ode.use_dlpack:
                 adj_u_tensor = dlpack.from_dlpack(ctx.ode.adj_u[0].toDlpack()).view(ctx.ode.cached_u_tensor.size())
                 adj_p_tensor = dlpack.from_dlpack(ctx.ode.adj_p[0].toDlpack()).view(ctx.ode.np)
-                adj_u_tensor.copy_(grad_output[0][-1].reshape(adj_u_tensor.shape))
+                adj_u_tensor.copy_(grad_output[0][-1])
                 adj_p_tensor.zero_()
             else:
                 ctx.ode.adj_u[0].setArray(grad_output[0][-1].cpu().numpy())
                 ctx.ode.adj_p[0].zeroEntries()
             for i in range(T-1, 0, -1):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i-1]]))
-                adj_u_tensor.add_(grad_output[0][i-1].reshape(adj_u_tensor.shape)) # add forcing
+                adj_u_tensor.add_(grad_output[0][i-1]) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
                     ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors              
-        print(torch.norm(adj_u_tensor))
-        exit()
+        # print(torch.norm(adj_u_tensor))
+        # exit()
         return (adj_u_tensor, None, adj_p_tensor, None)
