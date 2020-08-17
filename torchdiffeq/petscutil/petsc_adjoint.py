@@ -327,8 +327,8 @@ class ODEPetsc(object):
         """Return the solutions in tensor"""
         # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         if self.use_dlpack:
-            x = u0.detach().clone()
-            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(x)) # convert to PETSc vec
+            self.u0 = u0.detach().clone() # increase the object reference, otherwise the dlpack object may be deleted early and cause a bug
+            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.u0)) # convert to PETSc vec
         else:
             U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
