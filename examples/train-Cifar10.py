@@ -88,7 +88,7 @@ import torchdiffeq
 if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
 else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
 
 if args.impl == 'NODE_adj':
     from torchdiffeq import odeint_adjoint as odeint
@@ -209,9 +209,9 @@ class ODEBlock_PETSc(nn.Module):
         
         self.ode = petsc_adjoint.ODEPetsc()
         if Train:
-            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=True)
+            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=True)
         else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device,tensor_type), self.odefunc, self.step_size, self.method, enable_adjoint=False)
+            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=False)
         
         self.integration_time = torch.tensor(  [0,1] ).float()
         
@@ -327,8 +327,8 @@ def train(epoch):
     
     print('Training Epoch: #%d, LR: %.4f'%(epoch, lr_schedule(lr, epoch)))
     for idx, (inputs, labels) in enumerate(train_loader):
-        if idx == 1:
-            exit()
+        # if idx == 1:
+        #     exit()
         if is_use_cuda:
             inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()

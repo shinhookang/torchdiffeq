@@ -537,15 +537,16 @@ if __name__ == '__main__':
             feature_layers[0].nfe = 0
         else:
             nfe_forward = 0
-            
+        torch.cuda.empty_cache()    
         loss.backward()
+        torch.cuda.empty_cache()
         # print('itr', str(itr), ' decrease after backward',torch.cuda.memory_allocated() - after)
         # print('itr', str(itr), ' increase after backward',torch.cuda.memory_allocated() - before)
         optimizer.step()
         #print('itr', str(itr), ' after optimizer',torch.cuda.memory_allocated())
         # if itr == 50:
         #     exit()
-        # torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
         if itr % batches_per_epoch == 1:
             train_loss = 0
         train_loss += loss.item()

@@ -338,8 +338,8 @@ class ODEPetsc(object):
         """Return the solutions in tensor"""
         # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         if self.use_dlpack:
-            x = u0.detach().clone()
-            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(x)) # convert to PETSc vec
+            self.u0 = u0.detach().clone()
+            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.u0)) # convert to PETSc vec
         else:
             U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
@@ -421,4 +421,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor.add_(grad_output[0][i-1]) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
                     ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
+            adj_u_tensor = adj_u_tensor.detach().clone()
+            adj_p_tensor = adj_p_tensor.detach().clone()     
         return (adj_u_tensor, None, adj_p_tensor, None)

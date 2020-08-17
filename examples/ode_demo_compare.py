@@ -14,7 +14,7 @@ sys.path.append("../")
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','midpoint','bosh3'], default='euler')
 parser.add_argument('--step_size',type=float, default=0.025)
-parser.add_argument('--data_size', type=int, default=1001)
+parser.add_argument('--data_size', type=int, default=101)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
 parser.add_argument('--niters', type=int, default=1000)
@@ -178,7 +178,7 @@ class ODEFunc(nn.Module):
 
     def forward(self, t, y):
         self.nfe += 1
-        return self.net(y**3)
+        return self.net(y)
 
 
 class RunningAverageMeter(object):
@@ -231,10 +231,9 @@ if __name__ == '__main__':
     loss_PETSc_array = [] 
     dot_product_array = []
     for itr in range(1, args.niters + 1):
-        
         # for p1, p2 in zip(func_NODE.parameters(), func_PETSc.parameters()):  
         #     p1.data = p2.data.clone()
-        
+       
         optimizer_NODE.zero_grad()
         optimizer_PETSc.zero_grad()
 
@@ -272,11 +271,12 @@ if __name__ == '__main__':
         
         loss_PETSc.backward()
         print('PETSc loss after backward', loss_PETSc.item())
-        print('PETSc norm after backward',torch.norm(batch_y))
-
+        #print('PETSc norm after backward',torch.norm(batch_y))
+        torch.cuda.empty_cache()
         optimizer_PETSc.step()
+        torch.cuda.empty_cache()
         print('PETSc loss after step', loss_PETSc.item())
-        print('PETSc norm after step',torch.norm(batch_y))
+        #print('PETSc norm after step',torch.norm(batch_y))
         
         #exit()
         nfe_b_PETSc = func_PETSc.nfe

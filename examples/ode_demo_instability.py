@@ -245,6 +245,8 @@ if __name__ == '__main__':
     loss_meter = RunningAverageMeter(0.97)
     loss_NODE_array=[] 
     loss_PETSc_array = [] 
+    loss_std_NODE_array = []
+    loss_std_PETSc_array = []
     dot_product_array = []
     for itr in range(1, args.niters + 1):
         
@@ -258,6 +260,7 @@ if __name__ == '__main__':
         start_NODE = time.time()    
         pred_y_NODE = odeint(func_NODE, batch_y0.to(device), batch_t.to(device),method=args.method,options=options).to(device)
         loss_NODE = torch.mean(torch.abs(pred_y_NODE.to(device) - batch_y.to(device)))
+        loss_std_NODE = torch.std(torch.abs(pred_y_NODE.to(device) - batch_y.to(device)))
         end_NODE = time.time()
         nfe_f_NODE = func_NODE.nfe
         func_NODE.nfe = 0
@@ -270,6 +273,7 @@ if __name__ == '__main__':
         
 
         loss_PETSc = torch.mean(torch.abs(pred_y_PETSc.to(device) - batch_y.to(device)))
+        loss_std_PETSc = torch.std(torch.abs(pred_y_PETSc.to(device) - batch_y.to(device)))
         end_PETSc = time.time()
 
         loss_NODE.backward()
@@ -306,12 +310,15 @@ if __name__ == '__main__':
             with torch.no_grad():
                 
                 pred_y_NODE = odeint(func_NODE, true_y0.to(device), t.to(device),method=args.method,options=options)
-                loss_NODE_array=loss_NODE_array + [loss_NODE.item()]+[torch.mean(torch.abs(pred_y_NODE.to(device) - true_y.to(device)))]
+                loss_NODE_array=loss_NODE_array + [loss_NODE.item()]+[torch.mean(torch.abs(pred_y_NODE.to(device) - true_y.to(device))).cpu()]
+                loss_std_NODE_array = loss_std_NODE_array + [loss_std_NODE.item()]+[torch.std(torch.abs(pred_y_NODE.to(device) - true_y.to(device))).cpu()]
                 print('NODE : Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_NODE-start_NODE, loss_NODE_array[-1],nfe_f_NODE, nfe_b_NODE))
                 #func_NODE.nfe=0
                 
                 pred_y_PETSc = ode0.odeint_adjoint(true_y0.to(device), t.to(device))
-                loss_PETSc_array= loss_PETSc_array + [loss_PETSc.item()]+[torch.mean(torch.abs(pred_y_PETSc.to(device) - true_y.to(device)))]
+                loss_PETSc_array= loss_PETSc_array + [loss_PETSc.item()]+[torch.mean(torch.abs(pred_y_PETSc.to(device) - true_y.to(device))).cpu()]
+                loss_std_PETSc_array = loss_std_PETSc_array + [loss_std_PETSc.item()]+[torch.std(torch.abs(pred_y_PETSc.to(device) - true_y.to(device))).cpu()]
+                
                 print('PETSc: Iter {:04d} | Time {:.6f} | Total Loss {:.6f} | NFE-F {:04d} | NFE-B {:04d}'.format(itr,end_PETSc-start_PETSc, loss_PETSc_array[-1],nfe_f_PETSc, nfe_b_PETSc))
                 #func_PETSc.nfe=0
         #        print(torch.norm(pred_y_NODE - pred_y_PETSc))
@@ -328,13 +335,34 @@ if __name__ == '__main__':
     ax = f.add_subplot(122)
     #ax = plt.figure()
     #plt.figure()
-    ax.plot( range(0,itr,args.test_freq), [loss_NODE_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )] , 'b*-',label='Euler test loss')
-    ax2.plot(range(0,itr,args.test_freq), [loss_NODE_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'bo-',label='Euler train loss')
-    
-    ax.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i+1] for i in range(0,round( itr/args.test_freq ))], 'g*-',label='BEuler test loss')
-    ax2.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'go-',label='BEuler train loss')
-    ax2.set_ylim(0,0.75)
-    ax.set_ylim(0,8)
+    ax.grid()
+    ax2.grid()
+    ax.plot( range(0,itr,args.test_freq), [loss_NODE_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )] , 'b*-',label='RK2 test loss')
+    ax.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i+1] for i in range(0,round( itr/args.test_freq ))], 'g*-',label='CN test loss')
+    loss_NODE_array = np.nan_to_num(np.asarray(loss_NODE_array))
+    loss_std_NODE_array = np.nan_to_num(np.asarray(loss_std_NODE_array))
+    loss_PETSc_array = np.nan_to_num(np.asarray(loss_PETSc_array))
+    loss_std_PETSc_array = np.nan_to_num(np.asarray(loss_std_PETSc_array))
+    print(loss_std_PETSc_array)
+    print(loss_PETSc_array)
+ 
+    ax.fill_between(range(0,itr,args.test_freq),[loss_NODE_array[2*i+1]-loss_std_NODE_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )],
+                         [loss_NODE_array[2*i+1]+loss_std_NODE_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )], alpha=0.1,
+                         color="b")
+    ax.fill_between(range(0,itr,args.test_freq),[loss_PETSc_array[2*i+1]-loss_std_PETSc_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )],
+                         [loss_PETSc_array[2*i+1]+loss_std_PETSc_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )], alpha=0.1,
+                         color="g")
+
+    ax2.plot(range(0,itr,args.test_freq), [loss_NODE_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'bo-',label='RK2 train loss')  
+    ax2.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'go-',label='CN train loss')
+    ax2.fill_between(range(0,itr,args.test_freq),[loss_NODE_array[2*i]-loss_std_NODE_array[2*i] for i in range(0, round( itr/args.test_freq ) )],
+                         [loss_NODE_array[2*i]+loss_std_NODE_array[2*i] for i in range(0, round( itr/args.test_freq ) )], alpha=0.1,
+                         color="b")
+    ax2.fill_between(range(0,itr,args.test_freq),[loss_PETSc_array[2*i]-loss_std_PETSc_array[2*i] for i in range(0, round( itr/args.test_freq ) )],
+                         [loss_PETSc_array[2*i]+loss_std_PETSc_array[2*i] for i in range(0, round( itr/args.test_freq ) )], alpha=0.1,
+                         color="g")
+    ax2.set_ylim(-0.05,0.5)
+    ax.set_ylim(-0.05,8)
     ax.set_xlabel('niter')
     ax2.set_xlabel('niter')
     ax.legend()
@@ -348,4 +376,4 @@ if __name__ == '__main__':
     ax2.legend()
     print(func_NODE.fc1.weight.data)
     print(func_PETSc.fc1.weight.data)
-    #plt.savefig('loss_'+args.method+str(args.implicit)+'.png')
+    plt.savefig('loss_'+args.method+str(args.implicit)+'.png')
