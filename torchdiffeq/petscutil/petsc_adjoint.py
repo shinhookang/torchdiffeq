@@ -352,8 +352,8 @@ class ODEPetsc(object):
         ts.adjointSolve()
         adj_u, adj_p = ts.getCostGradients()
         if self.use_dlpack:
-            adj_u_tensor = self.adj_u_tensor
-            adj_p_tensor = self.adj_p_tensor
+            adj_u_tensor = self.adj_u_tensor.detach().clone()
+            adj_p_tensor = self.adj_p_tensor.detach().clone()
         else:
             adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
             adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(self.tensor_type).to(self.device)
