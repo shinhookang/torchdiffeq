@@ -30,8 +30,6 @@ class JacShell:
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
-        # print(vjp_u[0])
-        # print(self.x_tensor)
         if self.ode_.use_dlpack:
             y.copy_(vjp_u[0])
         else:
@@ -312,12 +310,10 @@ class OdeintAdjointMethod(torch.autograd.Function):
         T = ans.shape[0]
         with torch.no_grad():
             if ctx.ode.use_dlpack:
-                # adj_u_tensor = dlpack.from_dlpack(ctx.ode.adj_u[0].toDlpack()).view(ctx.ode.cached_u_tensor.size())
-                # adj_p_tensor = dlpack.from_dlpack(ctx.ode.adj_p[0].toDlpack()).view(ctx.ode.np)
-                # adj_u_tensor.copy_(grad_output[0][-1])
-                # adj_p_tensor.zero_()
-                ctx.ode.adj_u[0].setArray(grad_output[0][-1].cpu().numpy())
-                ctx.ode.adj_p[0].zeroEntries()
+                adj_u_tensor = dlpack.from_dlpack(ctx.ode.adj_u[0].toDlpack()).view(ctx.ode.cached_u_tensor.size())
+                adj_p_tensor = dlpack.from_dlpack(ctx.ode.adj_p[0].toDlpack()).view(ctx.ode.np)
+                adj_u_tensor.copy_(grad_output[0][-1])
+                adj_p_tensor.zero_()
             else:
                 ctx.ode.adj_u[0].setArray(grad_output[0][-1].cpu().numpy())
                 ctx.ode.adj_p[0].zeroEntries()
@@ -325,7 +321,5 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor, adj_p_tensor = ctx.ode.petsc_adjointsolve(torch.tensor([t[i], t[i-1]]))
                 adj_u_tensor.add_(grad_output[0][i-1]) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
-                    ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors            
-        #print(torch.norm(adj_u_tensor))
-        # exit()
+                    ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
         return (adj_u_tensor, None, adj_p_tensor, None)
