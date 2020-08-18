@@ -14,6 +14,8 @@ torch.manual_seed(0)
 torch.backends.cudnn.deterministic = True
 import inspect
 from pytorch_model_summary import summary
+import cProfile
+import pstats
 
 #from gpu_mem_track import MemTracker
 parser = argparse.ArgumentParser()
@@ -584,4 +586,7 @@ if __name__ == '__main__':
                         )
                     )
             start = time.time()
-        
+    
+    import re
+    p = pstats.Stats('profile.txt')
+    p.sort_stats('cumtime').print_stats(50)
