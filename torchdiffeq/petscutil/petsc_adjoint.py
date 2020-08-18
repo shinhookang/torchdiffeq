@@ -62,6 +62,7 @@ class RHSJacShell:
                func_eval, self.ode_.cached_u_tensor,
                x_tensor, allow_unused=True, retain_graph=True
             )
+        self.ode_.func_eval = func_eval
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
@@ -127,6 +128,7 @@ class IJacShell:
                func_eval, self.ode_.cached_u_tensor,
                self.x_tensor, allow_unused=True, retain_graph=True
             )
+        self.ode_.func_eval = func_eval
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
@@ -151,13 +153,14 @@ class JacPShell:
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
             # t = t.to(self.u_tensor.device).detach().requires_grad_(False)
-            func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
+            func_eval = self.ode_.func_eval
             vjp_params = torch.autograd.grad(
                 func_eval, f_params,
-                x_tensor, allow_unused=True, retain_graph=True
+                x_tensor, allow_unused=True
             )
         # autograd.grad returns None if no gradient, set to zero.
         vjp_params = _flatten_convert_none_to_zeros(vjp_params, f_params)
+        del self.ode_.func_eval
         if self.ode_.use_dlpack:
             if self.ode_.ijacp:
                 y.copy_(torch.mul(vjp_params,-1.0))
