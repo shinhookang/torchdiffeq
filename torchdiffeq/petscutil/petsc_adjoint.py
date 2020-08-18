@@ -393,7 +393,7 @@ class ODEPetsc(object):
         ts.adjointSolve()
         adj_u, adj_p = ts.getCostGradients()
         if self.use_dlpack:
-            adj_u_tensor = self.adj_u_tensor#.detach().clone() #This also cause gradient discrepancy.
+            adj_u_tensor = self.adj_u_tensor#.detach().clone() #This also cause gradient error.
             adj_p_tensor = self.adj_p_tensor#.detach().clone()
         else:
             adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
@@ -451,6 +451,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor.add_(grad_output[0][i-1]) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
                     ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
-            adj_u_tensor = adj_u_tensor.detach().clone()
+            adj_u_tensor = adj_u_tensor.detach().clone() # Avoid error in gradient
             adj_p_tensor = adj_p_tensor.detach().clone()     
         return (adj_u_tensor, None, adj_p_tensor, None)
