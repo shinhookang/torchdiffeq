@@ -264,7 +264,11 @@ class ODEPetsc(object):
 
     def saveSolution(self, ts, stepno, t, U):
         """"Save the solutions at intermediate points"""
-        if abs(t-self.sol_times[self.cur_index]) < 1e-5: # ugly workaround
+        if self.tensor_dtype == torch.double:
+            delta = 1e-5
+        else:
+            delta = 1e-3
+        if abs(t-self.sol_times[self.cur_index]) < delta: # ugly workaround
             if self.use_dlpack:
                 unew = dlpack.from_dlpack(U.toDlpack()).clone()
             else:
@@ -274,6 +278,7 @@ class ODEPetsc(object):
 
     def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True, implicit_form=False, use_dlpack=True):
         self.device = u_tensor.device
+        self.tensor_dtype = u_tensor.dtype
         self.tensor_type = u_tensor.type()
         self.cached_u_tensor = u_tensor.detach().clone()
         self.n = u_tensor.numel()
