@@ -39,16 +39,28 @@ parser.add_argument('--implicit', action='store_true')
 parser.add_argument('--double_prec', action='store_true')
 args, unknown = parser.parse_known_args()
 sys.argv = [sys.argv[0]] + unknown
-import petsc4py
-petsc4py.init(sys.argv)
-from petsc4py import PETSc
+if args.double_prec:
+    import petsc4py
+    petsc4py.init(sys.argv)
+    from petsc4py import PETSc
+else:
+    import petsc4py
+    sys.argv = [sys.argv[0]] + unknown
+
+    #sys.argv = sys.argv +[ 'arch=arch-linux-single-opt' ]
+    petsc4py.init(sys.argv,arch='arch-linux-single-opt')
+    from petsc4py import PETSc
+
 sys.path.append("../")
 if args.impl == 'ANODE':
-    sys.path.append('/home/zhaow/anode')
+    sys.path.append('/home/ac.wenjun.zhao/anode')
     from anode import odesolver_adjoint as odesolver
 
-torch.cuda.set_device(args.gpu)
-device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
+
+#torch.cuda.set_device(args.gpu)
+#device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 tensor_type = torch.float32
 if args.double_prec:
     tensor_type = torch.float64

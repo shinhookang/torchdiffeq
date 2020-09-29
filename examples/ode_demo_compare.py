@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 sys.path.append("../")
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5','midpoint','rk4','dopri5_fixed', 'fixed_adams','euler','midpoint','bosh3'], default='euler')
-parser.add_argument('--step_size',type=float, default=0.025)
-parser.add_argument('--data_size', type=int, default=101)
+parser.add_argument('--step_size',type=float, default=0.25)
+parser.add_argument('--data_size', type=int, default=11)
 parser.add_argument('--batch_time', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=20)
 parser.add_argument('--niters', type=int, default=1000)
@@ -26,10 +26,6 @@ parser.add_argument('--implicit', action='store_true')
 parser.add_argument('--double_prec', action='store_true')
 args, unknown = parser.parse_known_args()
 
-import petsc4py
-sys.argv = [sys.argv[0]] + unknown
-petsc4py.init(sys.argv)
-from petsc4py import PETSc
 
 # Set these random seeds, so everything can be reproduced. 
 np.random.seed(0)
@@ -37,8 +33,31 @@ torch.manual_seed(0)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-import torchdiffeq
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+if args.double_prec:
+    print('Using float64')
+    true_y0 = torch.tensor([[2., 0.]], dtype=torch.float64).to(device)
+    t = torch.linspace(0., 25., args.data_size, dtype=torch.float64)
+    true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]], dtype=torch.float64).to(device)
+    import petsc4py
+    sys.argv = [sys.argv[0]] + unknown
+
+    petsc4py.init(sys.argv)
+    from petsc4py import PETSc
+else:
+    print('Using float32 (PyTorch default)')
+    true_y0 = torch.tensor([[2., 0.]] ).to(device)
+    t = torch.linspace(0., 25., args.data_size)
+    true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]]).to(device)
+    import petsc4py
+    sys.argv = [sys.argv[0]] + unknown
+
+    #sys.argv = sys.argv +[ 'arch=arch-linux-single-opt' ]
+    petsc4py.init(sys.argv,arch='arch-linux-single-opt')
+    from petsc4py import PETSc
+    
 if args.implicit:
     from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
     print('implicit')
@@ -47,24 +66,13 @@ else:
     from torchdiffeq.petscutil import petsc_adjoint# as petsc_adjoint
     print('explicit')
 
+import torchdiffeq
+
 if args.adjoint:
-    from torchdiffeq import odeint_adjoint as odeint
+    from torchdiffeq import odeint_adjoint as odeint 
 else:
     from torchdiffeq import odeint
-torch.cuda.set_device(1)
-device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 
-if args.double_prec:
-    print('Using float64')
-    true_y0 = torch.tensor([[2., 0.]], dtype=torch.float64).to(device)
-    t = torch.linspace(0., 25., args.data_size, dtype=torch.float64)
-    true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]], dtype=torch.float64).to(device)
-else:
-    print('Using float32 (PyTorch default)')
-    true_y0 = torch.tensor([[2., 0.]] ).to(device)
-    t = torch.linspace(0., 25., args.data_size)
-    true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]]).to(device)
-    
 
 options = {}
 options.update({'step_size':args.step_size})
@@ -72,11 +80,11 @@ options.update({'step_size':args.step_size})
 class Lambda(nn.Module):
 
     def forward(self, t, y):
-        return torch.mm(y**3, true_A)
+        return torch.mm(y**3, true_A).to(device)
 
 
 with torch.no_grad():
-  #  t = torch.tensor([0.,0.12,1.])
+ 
     options_true = {}
     options_true.update({'step_size':args.step_size})
     true_y = odeint(Lambda(), true_y0, t, method='dopri5', options=options_true)
@@ -85,14 +93,14 @@ with torch.no_grad():
     ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False)
     true_y2 = ode0.odeint_adjoint(true_y0,t)
     print(true_y0.device)
-    print(true_y)
-    print(true_y2)
-    print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
-    #exit()
+    print(true_y2.device)
+    print(true_y0)
+    #print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
+    exit()
 
 
 def get_batch():
-    s = torch.from_numpy(np.random.choice(np.arange(args.data_size - args.batch_time, dtype=np.int64), args.batch_size, replace=False))
+    s = torch.from_numpy(np.random.choice(np.arange(args.data_size - args.batch_time, dtype=np.int64), args.batch_size, replace=True))
     batch_y0 = true_y[s]  # (M, D)
     batch_t = t[:args.batch_time]  # (T)
     batch_y = torch.stack([true_y[s + i] for i in range(args.batch_time)], dim=0)  # (T, M, D)
@@ -256,17 +264,17 @@ if __name__ == '__main__':
 
         loss_PETSc = torch.mean(torch.abs(pred_y_PETSc.to(device) - batch_y.to(device)))
         end_PETSc = time.time()
-        print('NODE loss before step',loss_NODE.item())
+        #print('NODE loss before step',loss_NODE.item())
         #print('NODE norm before step',torch.norm(pred_y_NODE))
         
         loss_NODE.backward()
         optimizer_NODE.step()
-        print('NODE loss after step',loss_NODE.item())
+        #print('NODE loss after step',loss_NODE.item())
         #print('NODE norm after step',torch.norm(pred_y_NODE))
         
         nfe_b_NODE = func_NODE.nfe
         func_NODE.nfe = 0
-        print('PETSc loss before step',loss_PETSc.item())
+        #print('PETSc loss before step',loss_PETSc.item())
         #print('PETSc norm before step',torch.norm(pred_y_PETSc))
         
         loss_PETSc.backward()
@@ -275,7 +283,7 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
         optimizer_PETSc.step()
         torch.cuda.empty_cache()
-        print('PETSc loss after step', loss_PETSc.item())
+        #print('PETSc loss after step', loss_PETSc.item())
         #print('PETSc norm after step',torch.norm(batch_y))
         
         #exit()

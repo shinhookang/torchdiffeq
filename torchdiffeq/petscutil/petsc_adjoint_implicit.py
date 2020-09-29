@@ -186,7 +186,7 @@ class ODEPetsc(object):
         self.device = u_tensor.device
         self.cached_u_tensor = u_tensor
         self.tensor_type = u_tensor.dtype#()
-        self.use_dlpack = False#u_tensor.is_cuda
+        self.use_dlpack = u_tensor.is_cuda
         if self.use_dlpack:
             self.tensor_type = u_tensor.type()
         self.n = u_tensor.numel()

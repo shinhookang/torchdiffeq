@@ -55,9 +55,34 @@ parser.add_argument('--double_prec', action='store_true')
 args, unknown = parser.parse_known_args()
 
 sys.argv = [sys.argv[0]] + unknown
-import petsc4py
-petsc4py.init(sys.argv)
-from petsc4py import PETSc
+if args.double_prec:
+    import petsc4py
+    petsc4py.init(sys.argv)
+    from petsc4py import PETSc
+else:
+    import petsc4py
+    sys.argv = [sys.argv[0]] + unknown
+
+    #sys.argv = sys.argv +[ 'arch=arch-linux-single-opt' ]
+    petsc4py.init(sys.argv,arch='arch-linux-single-opt')
+    from petsc4py import PETSc
+
+sys.path.append("../")
+if args.impl == 'ANODE':
+    sys.path.append('/home/ac.wenjun.zhao/anode')
+    from anode import odesolver_adjoint as odesolver
+
+
+#torch.cuda.set_device(args.gpu)
+#device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+
+is_use_cuda = torch.cuda.is_available()
+device = torch.device('cuda:0' if is_use_cuda else 'cpu')
+tensor_type = torch.float32
+if args.double_prec:
+    tensor_type = torch.float64
+
 if args.network == 'sqnxt' and not args.impl == 'PETSc':
     from models.sqnxt import SqNxt_23_1x, lr_schedule
 elif args.network == 'sqnxt' and args.impl == 'PETSc':
@@ -73,13 +98,10 @@ writer = SummaryWriter(args.save)
 import sys
 sys.path.append("../")
 if args.impl == 'ANODE':
-    sys.path.append('/home/zhaow/anode')
+    sys.path.append('/home/ac.wenjun.zhao/anode')
     from anode import odesolver_adjoint as odesolver
 
 
-is_use_cuda = torch.cuda.is_available()
-torch.cuda.set_device(args.gpu)
-device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
 if args.double_prec:
     tensor_type = torch.float64
 else:
@@ -264,8 +286,7 @@ if args.impl == 'PETSc':
 elif args.impl == 'ANODE':
     ODEBlock = ODEBlock_ANODE
 else:
-    ODEBlock = ODEBlock_NODE
-    
+    ODEBlock = ODEBlock_NODE  
 
 if args.network == 'sqnxt' and not args.impl == 'PETSc':
     net = SqNxt_23_1x(10, ODEBlock)

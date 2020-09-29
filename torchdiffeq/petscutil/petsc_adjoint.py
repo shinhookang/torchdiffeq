@@ -58,11 +58,11 @@ class RHSJacShell:
         with torch.set_grad_enabled(True):
             self.ode_.cached_u_tensor.requires_grad_(True)
             func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
-            self.ode_.func_eval = func_eval
             vjp_u = torch.autograd.grad(
                func_eval, self.ode_.cached_u_tensor,
                x_tensor, allow_unused=True, retain_graph=True
             )
+        self.ode_.func_eval = func_eval
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
@@ -128,6 +128,7 @@ class IJacShell:
                func_eval, self.ode_.cached_u_tensor,
                self.x_tensor, allow_unused=True, retain_graph=True
             )
+        self.ode_.func_eval = func_eval
         # autograd.grad returns None if no gradient, set to zero.
         # vjp_u = tuple(torch.zeros_like(y_) if vjp_u_ is None else vjp_u_ for vjp_u_, y_ in zip(vjp_u, y))
         if vjp_u[0] is None: vjp_u[0] = torch.zeros_like(y)
@@ -152,11 +153,10 @@ class JacPShell:
         f_params = tuple(self.ode_.func.parameters())
         with torch.set_grad_enabled(True):
             # t = t.to(self.u_tensor.device).detach().requires_grad_(False)
-            #func_eval = self.ode_.func(self.ode_.t, self.ode_.cached_u_tensor)
             func_eval = self.ode_.func_eval
             vjp_params = torch.autograd.grad(
                 func_eval, f_params,
-                x_tensor, allow_unused=True, retain_graph=True
+                x_tensor, allow_unused=True
             )
         # autograd.grad returns None if no gradient, set to zero.
         vjp_params = _flatten_convert_none_to_zeros(vjp_params, f_params)
@@ -184,6 +184,8 @@ class ODEPetsc(object):
             # have to call to() or type() to avoid a PETSc seg fault
             U.buildTensorInfo(self.cached_U)
             u_tensor = dlpack.from_dlpack(U.toDlpack())
+            #print(u_tensor.device)
+            #print(self.func(t,u_tensor).device)
             # u_tensor = dlpack.from_dlpack(U.toDlpack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
             F.buildTensorInfo(self.cached_U)
             dudt = dlpack.from_dlpack(F.toDlpack())
@@ -192,6 +194,8 @@ class ODEPetsc(object):
                 hdl = F.getCUDAHandle('w')
                 F.restoreCUDAHandle(hdl,'w')
             dudt.copy_(self.func(t, u_tensor))
+            
+            
         else:
             f = F.array
             u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
@@ -264,20 +268,27 @@ class ODEPetsc(object):
 
     def saveSolution(self, ts, stepno, t, U):
         """"Save the solutions at intermediate points"""
-        if abs(t-self.sol_times[self.cur_index]) < 1e-5: # ugly workaround
+        if self.tensor_dtype == torch.double:
+            delta = 1e-5
+        else:
+            delta = 1e-3
+        delta = self.step_size/10
+        if abs(t-self.sol_times[self.cur_index]) < delta: # ugly workaround
             if self.use_dlpack:
                 unew = dlpack.from_dlpack(U.toDlpack()).clone()
             else:
                 unew = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
             self.sol_list.append(unew)
+            
             self.cur_index = self.cur_index+1
 
-    def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True, method='euler', implicit_form=False, use_dlpack=True):
+    def setupTS(self, u_tensor, func, step_size=0.01, enable_adjoint=True, implicit_form=False, use_dlpack=True, method='euler'):
         self.device = u_tensor.device
+        self.tensor_dtype = u_tensor.dtype
         self.tensor_type = u_tensor.type()
         self.cached_u_tensor = u_tensor.detach().clone()
         self.n = u_tensor.numel()
-        self.use_dlpack = use_dlpack
+        self.use_dlpack = u_tensor.is_cuda# True#use_dlpack
         if use_dlpack:
             self.cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.cached_u_tensor)) # convert to PETSc vec
         else:
@@ -290,17 +301,25 @@ class ODEPetsc(object):
 
         self.ts.reset()
         self.ts.setType(PETSc.TS.Type.RK)
-        if method=='euler':
-            self.ts.setRKType('1fe')
-        elif method == 'midpoint':  # 2a is Heun's method, not midpoint. 
-            self.ts.setRKType('2a')
-        elif method == 'rk4':
-            self.ts.setRKType('4')
-        elif method == 'dopri5_fixed':
-            self.ts.setRKType('5dp')
-
         self.ts.setEquationType(PETSc.TS.EquationType.ODE_EXPLICIT)
         self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
+        # set the solver here. Currently only RK families are included.
+        if implicit_form == False:
+            if method=='euler':
+                self.ts.setRKType('1fe')
+            elif method == 'midpoint':  # 2a is Heun's method, not midpoint. 
+                self.ts.setRKType('2a')
+            elif method == 'rk4':
+                self.ts.setRKType('4')
+            elif method == 'dopri5_fixed':
+                self.ts.setRKType('5dp')
+        else:
+            if method == 'beuler' or method== 'euler':
+                self.ts.setType(PETSc.TS.Type.BE)
+            else:
+                self.ts.setType(PETSc.TS.Type.CN)
+         
+
 
         self.f_tensor = u_tensor.detach().clone()
         F = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.f_tensor))
@@ -393,8 +412,8 @@ class ODEPetsc(object):
         ts.adjointSolve()
         adj_u, adj_p = ts.getCostGradients()
         if self.use_dlpack:
-            adj_u_tensor = self.adj_u_tensor#.detach().clone() #This also cause gradient error.
-            adj_p_tensor = self.adj_p_tensor#.detach().clone()
+            adj_u_tensor = self.adj_u_tensor
+            adj_p_tensor = self.adj_p_tensor
         else:
             adj_u_tensor = torch.from_numpy(adj_u[0].getArray().reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
             adj_p_tensor = torch.from_numpy(adj_p[0].getArray().reshape(self.np)).type(self.tensor_type).to(self.device)
@@ -451,6 +470,6 @@ class OdeintAdjointMethod(torch.autograd.Function):
                 adj_u_tensor.add_(grad_output[0][i-1]) # add forcing
                 if not ctx.ode.use_dlpack: # if use_dlpack=True, adj_u_tensor shares memory with adj_u[0], so no need to set the values explicitly
                     ctx.ode.adj_u[0].setArray(adj_u_tensor.cpu().numpy()) # update PETSc work vectors
-            adj_u_tensor = adj_u_tensor.detach().clone() # Avoid error in gradient
-            adj_p_tensor = adj_p_tensor.detach().clone()     
+            adj_u_tensor = adj_u_tensor.detach().clone()
+            adj_p_tensor = adj_p_tensor.detach().clone()
         return (adj_u_tensor, None, adj_p_tensor, None)
