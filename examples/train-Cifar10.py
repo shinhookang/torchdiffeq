@@ -108,7 +108,7 @@ else:
     tensor_type = torch.float32
 import torchdiffeq
 if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
+    from torchdiffeq.petscutil import petsc_adjoint#_implicit as petsc_adjoint
 else:
     from torchdiffeq.petscutil import petsc_adjoint as petsc_adjoint
 
@@ -231,9 +231,9 @@ class ODEBlock_PETSc(nn.Module):
         
         self.ode = petsc_adjoint.ODEPetsc()
         if Train:
-            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=True)
+            self.ode.setupTS(torch.zeros(args.batch_size,*input_size).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=True,implicit_form=args.implicit)
         else:
-            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=False)
+            self.ode.setupTS(torch.zeros(args.test_batch_size,*input_size).to(device,tensor_type), self.odefunc, step_size=self.step_size, method=self.method, enable_adjoint=False,implicit_form=args.implicit)
         
         self.integration_time = torch.tensor(  [0,1] ).float()
         

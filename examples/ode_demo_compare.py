@@ -96,7 +96,7 @@ with torch.no_grad():
     print(true_y2.device)
     print(true_y0)
     #print('Difference between PETSc and NODE reference solutions: {:.6f}'.format(torch.norm(true_y-true_y2)))
-    exit()
+    #exit()
 
 
 def get_batch():

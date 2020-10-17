@@ -1,5 +1,5 @@
 ########################################
-#python3 ode_demo_instability.py -ts_adapt_type none -ts_trajectory_type memory --double_prec --method midpoint --niters 200 --test_freq 10 --implicit
+#python3 spiral_unstable.py -ts_adapt_type none -ts_trajectory_type memory --double_prec --method midpoint --niters 200 --test_freq 10 --implicit
 #######################################
 import os
 import argparse
@@ -12,7 +12,6 @@ import torch.optim as optim
 import sys
 import copy
 import matplotlib.pyplot as plt
-
 
 sys.path.append("../")
 parser = argparse.ArgumentParser('ODE demo')
@@ -30,10 +29,6 @@ parser.add_argument('--implicit', action='store_true')
 parser.add_argument('--double_prec', action='store_true')
 args, unknown = parser.parse_known_args()
 
-import petsc4py
-sys.argv = [sys.argv[0]] + unknown
-petsc4py.init(sys.argv)
-from petsc4py import PETSc
 
 # Set these random seeds, so everything can be reproduced. 
 np.random.seed(0)
@@ -41,33 +36,44 @@ torch.manual_seed(0)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-import torchdiffeq
-
-if args.implicit:
-    from torchdiffeq.petscutil import petsc_adjoint_implicit as petsc_adjoint
-    print('implicit')
-else:
-    from torchdiffeq.petscutil import petsc_adjoint_explicit as petsc_adjoint
-    print('explicit')
-
-if args.adjoint:
-    from torchdiffeq import odeint_adjoint as odeint
-else:
-    from torchdiffeq import odeint
-torch.cuda.set_device(1)
-device = torch.device('cuda:' + str(args.gpu) if torch.cuda.is_available() else 'cpu')
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 if args.double_prec:
     print('Using float64')
     true_y0 = torch.tensor([[2., 0.]], dtype=torch.float64).to(device)
     t = torch.linspace(0., 16., args.data_size, dtype=torch.float64)
     true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]], dtype=torch.float64).to(device)
+    import petsc4py
+    sys.argv = [sys.argv[0]] + unknown
+
+    petsc4py.init(sys.argv)
+    from petsc4py import PETSc
 else:
     print('Using float32 (PyTorch default)')
     true_y0 = torch.tensor([[2., 0.]] ).to(device)
     t = torch.linspace(0., 16., args.data_size)
     true_A = torch.tensor([[-0.1, 2.0], [-2.0, -0.1]]).to(device)
-    
+    import petsc4py
+    sys.argv = [sys.argv[0]] + unknown
+
+    #sys.argv = sys.argv +[ 'arch=arch-linux-single-opt' ]
+    petsc4py.init(sys.argv,arch='arch-linux-single-opt')
+    from petsc4py import PETSc   
+
+
+if args.implicit:
+    from torchdiffeq.petscutil import petsc_adjoint#_implicit as petsc_adjoint
+    print('implicit')
+else:
+    from torchdiffeq.petscutil import petsc_adjoint#_explicit as petsc_adjoint
+    print('explicit')
+
+if args.adjoint:
+    from torchdiffeq import odeint_adjoint as odeint
+else:
+    from torchdiffeq import odeint
+
 
 options = {}
 options.update({'step_size':args.step_size})
@@ -75,7 +81,7 @@ options.update({'step_size':args.step_size})
 class Lambda(nn.Module):
 
     def forward(self, t, y):
-        return torch.mm(y**3, true_A)
+        return torch.mm(y**3, true_A).to(device)
 
 
 with torch.no_grad():
@@ -85,7 +91,7 @@ with torch.no_grad():
     true_y = odeint(Lambda(), true_y0, t, method='dopri5', options=options_true)
 
     ode0 = petsc_adjoint.ODEPetsc()
-    ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False)
+    ode0.setupTS(true_y0, Lambda(), step_size=args.step_size, method=args.method, enable_adjoint=False, implicit_form=args.implicit)
     true_y2 = ode0.odeint_adjoint(true_y0,t)
     print(true_y0.device)
     print(true_y)
@@ -232,11 +238,11 @@ if __name__ == '__main__':
     func_PETSc = copy.deepcopy(func_NODE).to(device)
     ode = petsc_adjoint.ODEPetsc()
     
-    ode.setupTS(torch.zeros(args.batch_size,1,1,2).to(device,true_y0.dtype), func_PETSc, args.step_size, args.method, enable_adjoint=True)
+    ode.setupTS(torch.zeros(args.batch_size,1,2).to(device,true_y0.dtype), func_PETSc, step_size=args.step_size, method=args.method, enable_adjoint=True, implicit_form=args.implicit)
     optimizer_PETSc = optim.RMSprop(func_PETSc.parameters(), lr=1e-2)
 #  PETSc model for test
     ode0 = petsc_adjoint.ODEPetsc()
-    ode0.setupTS(true_y0.to(device), func_PETSc, step_size=args.step_size, method=args.method, enable_adjoint=False)
+    ode0.setupTS(true_y0.to(device), func_PETSc, step_size=args.step_size, method=args.method, enable_adjoint=False,implicit_form=args.implicit)
                 
 #   end of PETSc
     end = time.time()
@@ -337,8 +343,8 @@ if __name__ == '__main__':
     #plt.figure()
     ax.grid()
     ax2.grid()
-    ax.plot( range(0,itr,args.test_freq), [loss_NODE_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )] , 'b*-',label='RK2 test loss')
-    ax.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i+1] for i in range(0,round( itr/args.test_freq ))], 'g*-',label='CN test loss')
+    ax.plot( range(0,itr,args.test_freq), [loss_NODE_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )] , 'b*-',label='explicit test loss')
+    ax.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i+1] for i in range(0,round( itr/args.test_freq ))], 'g*-',label='implicit test loss')
     loss_NODE_array = np.nan_to_num(np.asarray(loss_NODE_array))
     loss_std_NODE_array = np.nan_to_num(np.asarray(loss_std_NODE_array))
     loss_PETSc_array = np.nan_to_num(np.asarray(loss_PETSc_array))
@@ -353,8 +359,8 @@ if __name__ == '__main__':
                          [loss_PETSc_array[2*i+1]+loss_std_PETSc_array[2*i+1] for i in range(0, round( itr/args.test_freq ) )], alpha=0.1,
                          color="g")
 
-    ax2.plot(range(0,itr,args.test_freq), [loss_NODE_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'bo-',label='RK2 train loss')  
-    ax2.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'go-',label='CN train loss')
+    ax2.plot(range(0,itr,args.test_freq), [loss_NODE_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'bo-',label='explicit train loss')  
+    ax2.plot(range(0,itr,args.test_freq), [loss_PETSc_array[2*i] for i in range(0,round( itr/args.test_freq ))], 'go-',label='implicit train loss')
     ax2.fill_between(range(0,itr,args.test_freq),[loss_NODE_array[2*i]-loss_std_NODE_array[2*i] for i in range(0, round( itr/args.test_freq ) )],
                          [loss_NODE_array[2*i]+loss_std_NODE_array[2*i] for i in range(0, round( itr/args.test_freq ) )], alpha=0.1,
                          color="b")
