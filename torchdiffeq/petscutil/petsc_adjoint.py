@@ -12,10 +12,10 @@ class RHSJacShell:
     def mult(self, A, X, Y):
         """The Jacobian is A = shift*I - dFdU"""
         if self.ode_.use_dlpack:
-            X.buildTensorInfo(self.ode_.cached_U)
-            x_tensor = dlpack.from_dlpack(X.toDlpack())
-            Y.buildTensorInfo(self.ode_.cached_U)
-            y = dlpack.from_dlpack(Y.toDlpack())
+            X.attachDLPackInfo(self.ode_.cached_U)
+            x_tensor = dlpack.from_dlpack(X.toDLPack())
+            Y.attachDLPackInfo(self.ode_.cached_U)
+            y = dlpack.from_dlpack(Y.toDLPack())
         else:
             x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
             y = Y.array
@@ -48,10 +48,10 @@ class RHSJacShell:
 
     def multTranspose(self, A, X, Y):
         if self.ode_.use_dlpack:
-            X.buildTensorInfo(self.ode_.cached_U)
-            x_tensor = dlpack.from_dlpack(X.toDlpack())
-            Y.buildTensorInfo(self.ode_.cached_U)
-            y = dlpack.from_dlpack(Y.toDlpack())
+            X.attachDLPackInfo(self.ode_.cached_U)
+            x_tensor = dlpack.from_dlpack(X.toDLPack())
+            Y.attachDLPackInfo(self.ode_.cached_U)
+            y = dlpack.from_dlpack(Y.toDLPack())
         else:
             x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
             y = Y.array
@@ -78,10 +78,10 @@ class IJacShell:
     def mult(self, A, X, Y):
         """The Jacobian is A = shift*I - dFdU"""
         if self.ode_.use_dlpack:
-            X.buildTensorInfo(self.ode_.cached_U)
-            self.x_tensor = dlpack.from_dlpack(X.toDlpack())
-            Y.buildTensorInfo(self.ode_.cached_U)
-            y = dlpack.from_dlpack(Y.toDlpack())
+            X.attachDLPackInfo(self.ode_.cached_U)
+            self.x_tensor = dlpack.from_dlpack(X.toDLPack())
+            Y.attachDLPackInfo(self.ode_.cached_U)
+            y = dlpack.from_dlpack(Y.toDLPack())
         else:
             self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
             y = Y.array
@@ -114,10 +114,10 @@ class IJacShell:
 
     def multTranspose(self, A, X, Y):
         if self.ode_.use_dlpack:
-            X.buildTensorInfo(self.ode_.cached_U)
-            self.x_tensor = dlpack.from_dlpack(X.toDlpack())
-            Y.buildTensorInfo(self.ode_.cached_U)
-            y = dlpack.from_dlpack(Y.toDlpack())
+            X.attachDLPackInfo(self.ode_.cached_U)
+            self.x_tensor = dlpack.from_dlpack(X.toDLPack())
+            Y.attachDLPackInfo(self.ode_.cached_U)
+            y = dlpack.from_dlpack(Y.toDLPack())
         else:
             self.x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
             y = Y.array
@@ -143,10 +143,10 @@ class JacPShell:
 
     def multTranspose(self, A, X, Y):
         if self.ode_.use_dlpack:
-            X.buildTensorInfo(self.ode_.cached_U)
-            x_tensor = dlpack.from_dlpack(X.toDlpack())
-            Y.buildTensorInfo(self.ode_.adj_p[0])
-            y = dlpack.from_dlpack(Y.toDlpack())
+            X.attachDLPackInfo(self.ode_.cached_U)
+            x_tensor = dlpack.from_dlpack(X.toDLPack())
+            Y.attachDLPackInfo(self.ode_.adj_p[0])
+            y = dlpack.from_dlpack(Y.toDLPack())
         else:
             x_tensor = torch.from_numpy(X.array.reshape(self.ode_.cached_u_tensor.size())).type(self.ode_.tensor_type).to(self.ode_.device)
             y = Y.array
@@ -182,11 +182,11 @@ class ODEPetsc(object):
     def evalFunction(self, ts, t, U, F):
         if self.use_dlpack:
             # have to call to() or type() to avoid a PETSc seg fault
-            U.buildTensorInfo(self.cached_U)
-            u_tensor = dlpack.from_dlpack(U.toDlpack())
-            # u_tensor = dlpack.from_dlpack(U.toDlpack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
-            F.buildTensorInfo(self.cached_U)
-            dudt = dlpack.from_dlpack(F.toDlpack())
+            U.attachDLPackInfo(self.cached_U)
+            u_tensor = dlpack.from_dlpack(U.toDLPack())
+            # u_tensor = dlpack.from_dlpack(U.toDLPack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
+            F.attachDLPackInfo(self.cached_U)
+            dudt = dlpack.from_dlpack(F.toDLPack())
             # Resotring the handle set the offloadmask flag to PETSC_OFFLOAD_GPU, but it zeros out the GPU memory accidentally, which is probably a bug
             if torch.cuda.is_initialized():
                 hdl = F.getCUDAHandle('w')
@@ -200,16 +200,16 @@ class ODEPetsc(object):
 
     def evalIFunction(self, ts, t, U, Udot, F):
         if self.use_dlpack:
-            U.buildTensorInfo(self.cached_U)
-            u_tensor = dlpack.from_dlpack(U.toDlpack())
-            Udot.buildTensorInfo(self.cached_U)
-            udot_tensor = dlpack.from_dlpack(Udot.toDlpack())
+            U.attachDLPackInfo(self.cached_U)
+            u_tensor = dlpack.from_dlpack(U.toDLPack())
+            Udot.attachDLPackInfo(self.cached_U)
+            udot_tensor = dlpack.from_dlpack(Udot.toDLPack())
             # Resotring the handle set the offloadmask flag to PETSC_OFFLOAD_GPU, but it zeros out the GPU memory accidentally, which is probably a bug
             if torch.cuda.is_initialized():
                 hdl = F.getCUDAHandle('w')
                 F.restoreCUDAHandle(hdl,'w')
-            F.buildTensorInfo(self.cached_U)
-            dudt = dlpack.from_dlpack(F.toDlpack())
+            F.attachDLPackInfo(self.cached_U)
+            dudt = dlpack.from_dlpack(F.toDLPack())
             dudt.copy_(udot_tensor-self.func(t, u_tensor))
         else:
             f = F.array
@@ -221,10 +221,10 @@ class ODEPetsc(object):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
         if self.use_dlpack:
-            U.buildTensorInfo(self.cached_U)
-            x = dlpack.from_dlpack(U.toDlpack())
+            U.attachDLPackInfo(self.cached_U)
+            x = dlpack.from_dlpack(U.toDLPack())
             self.cached_u_tensor.copy_(x)
-            # self.cached_u_tensor = dlpack.from_dlpack(U.toDlpack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
+            # self.cached_u_tensor = dlpack.from_dlpack(U.toDLPack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
         else:
             self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
@@ -233,10 +233,10 @@ class ODEPetsc(object):
         self.t = t
         self.shift = shift
         if self.use_dlpack:
-            U.buildTensorInfo(self.cached_U)
-            x = dlpack.from_dlpack(U.toDlpack())
+            U.attachDLPackInfo(self.cached_U)
+            x = dlpack.from_dlpack(U.toDLPack())
             self.cached_u_tensor.copy_(x)
-            # self.cached_u_tensor = dlpack.from_dlpack(U.toDlpack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
+            # self.cached_u_tensor = dlpack.from_dlpack(U.toDLPack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
         else:
             self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
@@ -244,10 +244,10 @@ class ODEPetsc(object):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
         if self.use_dlpack:
-            U.buildTensorInfo(self.cached_U)
-            x = dlpack.from_dlpack(U.toDlpack())
+            U.attachDLPackInfo(self.cached_U)
+            x = dlpack.from_dlpack(U.toDLPack())
             self.cached_u_tensor.copy_(x)
-            # self.cached_u_tensor = dlpack.from_dlpack(U.toDlpack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
+            # self.cached_u_tensor = dlpack.from_dlpack(U.toDLPack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
         else:
             self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
@@ -255,10 +255,10 @@ class ODEPetsc(object):
         """Cache t and U for matrix-free Jacobian """
         self.t = t
         if self.use_dlpack:
-            U.buildTensorInfo(self.cached_U)
-            x = dlpack.from_dlpack(U.toDlpack())
+            U.attachDLPackInfo(self.cached_U)
+            x = dlpack.from_dlpack(U.toDLPack())
             self.cached_u_tensor.copy_(x)
-            # self.cached_u_tensor = dlpack.from_dlpack(U.toDlpack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
+            # self.cached_u_tensor = dlpack.from_dlpack(U.toDLPack()).view(self.cached_u_tensor.size()).type(self.tensor_type)
         else:
             self.cached_u_tensor = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
 
@@ -270,7 +270,7 @@ class ODEPetsc(object):
             delta = 1e-3
         if abs(t-self.sol_times[self.cur_index]) < delta: # ugly workaround
             if self.use_dlpack:
-                unew = dlpack.from_dlpack(U.toDlpack()).clone()
+                unew = dlpack.from_dlpack(U.toDLPack()).clone()
             else:
                 unew = torch.from_numpy(U.array.reshape(self.cached_u_tensor.size())).type(self.tensor_type).to(self.device)
             self.sol_list.append(unew)
@@ -284,7 +284,7 @@ class ODEPetsc(object):
         self.n = u_tensor.numel()
         self.use_dlpack = use_dlpack
         if use_dlpack:
-            self.cached_U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.cached_u_tensor)) # convert to PETSc vec
+            self.cached_U = PETSc.Vec().createWithDLPack(dlpack.to_dlpack(self.cached_u_tensor)) # convert to PETSc vec
         else:
             self.cached_U = PETSc.Vec().createWithArray(u_tensor.cpu().numpy()) # convert to PETSc vec
 
@@ -299,7 +299,7 @@ class ODEPetsc(object):
         self.ts.setExactFinalTime(PETSc.TS.ExactFinalTime.MATCHSTEP)
 
         self.f_tensor = u_tensor.detach().clone()
-        F = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.f_tensor))
+        F = PETSc.Vec().createWithDLPack(dlpack.to_dlpack(self.f_tensor))
         if implicit_form :
             self.ts.setIFunction(self.evalIFunction, F)
         else :
@@ -339,13 +339,13 @@ class ODEPetsc(object):
 
             if self.use_dlpack:
                 self.adj_u_tensor = u_tensor.detach().clone()
-                self.adj_u.append(PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.adj_u_tensor)))
+                self.adj_u.append(PETSc.Vec().createWithDLPack(dlpack.to_dlpack(self.adj_u_tensor)))
             else:
                 self.adj_u.append(PETSc.Vec().createSeq(self.n, comm=self.comm))
             self.adj_p = []
             if self.use_dlpack:
                 self.adj_p_tensor = self.flat_params.detach().clone()
-                self.adj_p.append(PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.adj_p_tensor)))
+                self.adj_p.append(PETSc.Vec().createWithDLPack(dlpack.to_dlpack(self.adj_p_tensor)))
             else:
                 self.adj_p.append(PETSc.Vec().createSeq(self.np, comm=self.comm))
             # self.adj_p.append(torch.zeros_like(self.flat_params))
@@ -365,7 +365,7 @@ class ODEPetsc(object):
         # self.u0 = u0.clone().detach() # clone a new tensor that will be used by PETSc
         if self.use_dlpack:
             self.u0 = u0.detach().clone() # increase the object reference, otherwise the dlpack object may be deleted early and cause a bug
-            U = PETSc.Vec().createWithDlpack(dlpack.to_dlpack(self.u0)) # convert to PETSc vec
+            U = PETSc.Vec().createWithDLPack(dlpack.to_dlpack(self.u0)) # convert to PETSc vec
         else:
             U = PETSc.Vec().createWithArray(u0.cpu().numpy()) # convert to PETSc vec
         ts = self.ts
