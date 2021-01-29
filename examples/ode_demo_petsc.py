@@ -15,6 +15,15 @@ import sys
 # torch.backends.cudnn.deterministic = True
 # torch.backends.cudnn.benchmark = False
 
+#
+# Exmaple usage:
+#  python3 ode_demo_petsc.py --double_prec -ts_adapt_type none
+#
+# Note:
+#   - PETSc4py must be installed. It can be installed with PETSc using the configuration option --with-petsc4py
+#   - Must add -ts_adapt_type none to disable adaptive time integration for this example
+#   - Add --double_prec if PETSc is configured with double precision. It is not needed if PETSc is configured with --with-precision=single
+
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5', 'adams'], default='dopri5')
 parser.add_argument('--data_size', type=int, default=1001)
