@@ -9,6 +9,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+# Specify a path
+PATH = "coupler_model.pt"
+
 parser = argparse.ArgumentParser('ODE demo')
 parser.add_argument('--method', type=str, choices=['dopri5', 'adams'], default='dopri5')
 parser.add_argument('--batch_time', type=int, default=10)
@@ -38,12 +41,15 @@ def ReadCCNS2D_Interface_fromHDF5(ifile):
 def getInterfaceData(path_to_folder):
     t = []
     q = []
+    count = 0
     filelist = glob.glob(os.path.join(path_to_folder, '*.h5'))
     for f in sorted(filelist):
-        root_ext = os.path.splitext(f)
-        qt,q1,q2 = ReadCCNS2D_Interface_fromHDF5(f)
-        t.append(qt)
-        q.append(torch.from_numpy(q1).float().to(device))
+        if count <= 400:
+            root_ext = os.path.splitext(f)
+            qt,q1,q2 = ReadCCNS2D_Interface_fromHDF5(f)
+            t.append(qt)
+            q.append(torch.from_numpy(q1).float().to(device))
+        count = count + 1
     t = torch.tensor(t).to(device)
     true_y = torch.empty(len(t), *q[0].shape, dtype=q[0].dtype, device=device)
     for i in range(0,len(t)):
@@ -136,3 +142,9 @@ if __name__ == '__main__':
                 ii += 1
 
         end = time.time()
+    # Save
+    torch.save(func.net.state_dict(), PATH)
+    # Load
+    # model = Net()
+    # model.load_state_dict(torch.load(PATH))
+    # model.eval()
