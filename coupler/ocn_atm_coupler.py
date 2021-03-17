@@ -38,6 +38,13 @@ def ReadCCNS2D_Interface_fromHDF5(ifile):
         QQ2_interface = np.array(f['QQ2'])
     return curTime,QQ1_interface[:,7],QQ2_interface[:,7]
 
+def ReadCCNS2D_Interface_fromHDF5_(ifile):
+    with h5py.File(ifile, 'r') as f:
+        curTime = float(np.array(f['time']))
+        QQ1_interface = np.array(f['QQ1'])
+        QQ2_interface = np.array(f['QQ2'])
+    return curTime,QQ1_interface,QQ2_interface
+
 def getInterfaceData(path_to_folder):
     t = []
     q = []

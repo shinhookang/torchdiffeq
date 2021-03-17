@@ -43,11 +43,14 @@ def getTestingInterfaceData(path_to_folder):
 t,true_y = getTestingInterfaceData('../ml-coupling-datafiles/output-interface')
 tdata_size = len(t)
 
+ 
+
 if __name__ == '__main__':
 
     func = ODEFunc().to(device)
     num_samples = 10
-    func.net.load_state_dict(torch.load(PATH))
+    # func.net.load_state_dict(torch.load(PATH))
+    func.net.load_state_dict(torch.load(PATH,map_location='cpu'))
     func.eval()
     with torch.no_grad():
         loss = 0
